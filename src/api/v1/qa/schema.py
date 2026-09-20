@@ -8,18 +8,34 @@ __all__ = ["QaRequest", "QaResponse", "QaTurn"]
 
 
 class QaTurn(BaseModel):
-    """One exchange, as the caller replays it back to us."""
+    """One exchange, as the caller replays it back to us.
+
+    ``question`` and ``answer`` are exactly what the rewrite service's own
+    schema expects for a history entry -- this type exists to be that pair,
+    nothing more.
+    """
 
     question: str
-    tag: str | None = None
+    answer: str | None = None
 
 
 class QaRequest(BaseModel):
     """Only ``question`` is required.
 
-    ``history`` makes a follow-up answerable: "how much is the fee?" carries no
-    subject on its own. The server stores nothing -- the caller holds the
-    history and passes it back, so the service stays horizontally scalable.
+    A follow-up like "how much is the fee?" carries no subject on its own; an
+    external service rewrites it into a standalone question given the
+    conversation so far. Two ways to supply that conversation:
+
+    ``chat_id`` -- the server holds the turns in memory, per process, for
+    ``SESSION_TTL_S`` of inactivity (default 30 min). Simplest for a
+    caller: send only ``question`` and the same ``chat_id`` each turn.
+
+    ``history`` -- the caller holds every turn and echoes it back, exactly as
+    ``QaResponse.history`` returns it. Slower to wire up, but stateless and
+    horizontally scalable: no server memory, so any instance can serve any
+    turn. Ignored when ``chat_id`` is given.
+
+    Omit both for a single, context-free question.
     """
 
     model_config = ConfigDict(
@@ -29,6 +45,9 @@ class QaRequest(BaseModel):
     )
 
     question: str = Field(..., min_length=1)
+    chat_id: str | None = Field(
+        None, description="Server-held conversation id. Takes priority over `history`."
+    )
     history: list[QaTurn] = Field(
         default_factory=list,
         description="Prior turns, oldest first. Echoed back with this turn appended.",
@@ -74,6 +93,9 @@ class QaResponse(BaseModel):
         default_factory=list, description="Pass this straight back on the next turn."
     )
     used_context: bool = Field(
-        False, description="True when history rescued a question that failed standalone."
+        False, description="True when the rewrite service judged this a follow-up."
+    )
+    chat_id: str | None = Field(
+        None, description="Echoed back; pass it on the next turn to keep the conversation."
     )
     took_ms: float = 0.0

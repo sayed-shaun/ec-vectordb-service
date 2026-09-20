@@ -17,6 +17,8 @@ from src.schemas import QueryRequest
 from src.core.config import settings
 from src.ec import FALLBACK_TAG, AnswerStore
 from src.normalize import normalize
+from src.core.memory import store as session_store
+from src.rewrite import rewrite_question
 from src.service import RetrievalService
 
 log = logging.getLogger(__name__)
@@ -78,6 +80,15 @@ class EcBotService:
             fallback_reason = "low_similarity"
         elif agreement < required:
             fallback_reason = "model_disagreement"
+        elif self._is_placeholder(winner.tag):
+            # Routing was right; the dataset has no real answer to give. Two
+            # shapes of this slipped into tag_answer.json: a stub too short to
+            # be an answer ("tag", 3 chars, on 772 questions under `fraction`),
+            # and a tag whose answer is a verbatim copy of the "call 105"
+            # disclaimer (16 tags, 264 questions) -- which reads as a
+            # confident answer while saying nothing at all.
+            log.warning("tag %r has a placeholder answer; refusing it", winner.tag)
+            fallback_reason = "placeholder_answer"
         else:
             fallback_reason = None
 
@@ -113,10 +124,20 @@ class EcBotService:
     def answer(self, req: QaRequest) -> QaResponse:
         """Reduce a full retrieval to the one thing a front end needs.
 
-        A follow-up like "how much is the fee?" names no subject, so it is
-        retried against the prior turns when it fails on its own. The retry
-        only ever runs after a failure, so carrying history cannot change an
-        answer that already stood up without it.
+        The question is tried as asked first. Only a question that fails on
+        its own -- fails the floor, the agreement gate, or lands on a
+        placeholder answer -- goes to the external rewrite service, which
+        turns it into a standalone question against the conversation so far.
+        That conversation comes from ``chat_id`` (server-held, in memory)
+        when given, else from the caller-echoed ``history``.
+
+        Trying bare first is what lets a question that happens to arrive
+        mid-conversation, but doesn't need it, skip the external call
+        entirely -- and it is what lets a corpus tag ever win on a bare
+        match at all. A short acknowledgement like "আচ্ছা" that has no
+        canonical form of its own in the corpus will still fail and fall
+        through to the rewriter same as before; that is a coverage gap in
+        the corpus, not something to special-case here (see CLAUDE.md).
         """
         def ask(question: str):
             return self.top_similar(
@@ -130,24 +151,39 @@ class EcBotService:
                 )
             )
 
+        if req.chat_id:
+            history_pairs = session_store.get(req.chat_id)
+        else:
+            history_pairs = [{"question": t.question, "answer": t.answer or ""} for t in req.history]
+
         full = ask(req.question)
         used_context = False
 
-        # A confident answer is not evidence the question was understood: a
-        # bare "ফি কত?" matches canonical questions literally titled "ফি কত"
-        # at 0.89 and lands on the wrong tag. Shape decides, not confidence.
-        if req.history and (self._needs_context(req.question) or not full.confident):
-            expanded = self._with_context(req.question, req.history)
-            if expanded != req.question:
-                retry = ask(expanded)
+        if history_pairs and not full.confident:
+            rewritten, was_rewritten = rewrite_question(
+                req.question,
+                history_pairs,
+                url=settings.rewrite_url,
+                timeout=settings.rewrite_timeout_s,
+            )
+            # used_context means "a rescue was attempted", independent of
+            # whether it worked -- confident/fallback_reason already say
+            # that. A rewrite that still lands on a placeholder tag (a real
+            # case: "how many days to reissue?" resolves correctly to
+            # nid_reissue_process_duration, which is itself one of the
+            # verbatim-disclaimer tags) is a meaningfully different outcome
+            # from never having tried, and collapsing the two would hide it.
+            used_context = was_rewritten and rewritten != req.question
+            if used_context:
+                retry = ask(rewritten)
                 if retry.confident:
-                    log.info(
-                        "context applied to %r -> %r: %s -> %s",
-                        req.question, expanded, full.tag, retry.tag,
-                    )
-                    full, used_context = retry, True
+                    full = retry
 
-        history = list(req.history) + [QaTurn(question=req.question, tag=full.tag)]
+        if req.chat_id:
+            session_store.append(req.chat_id, req.question, full.answer)
+            history = [QaTurn(**t) for t in session_store.get(req.chat_id)]
+        else:
+            history = list(req.history) + [QaTurn(question=req.question, answer=full.answer)]
 
         return QaResponse(
             question=req.question,
@@ -162,30 +198,21 @@ class EcBotService:
             took_ms=full.took_ms,
             history=history,
             used_context=used_context,
+            chat_id=req.chat_id,
         )
 
-    @staticmethod
-    def _needs_context(question: str) -> bool:
-        """Whether a question is too bare to carry its own subject.
+    def _is_placeholder(self, tag: str) -> bool:
+        """Whether a tag's answer is a stub that escaped into published data.
 
-        Length is the signal that survives: the follow-ups in this corpus are
-        overwhelmingly short elisions -- "ফি কত?", "কতদিন লাগে?", "কাগজপত্র কী
-        কী?" -- rather than explicit anaphora, so a leading-pronoun test alone
-        misses most of them.
+        Two independent tells, since one misses the other's cases: too short
+        to be a real answer, or an exact copy of the fallback disclaimer used
+        as if it were a routed tag's own answer.
         """
-        return len(question.split()) <= settings.context_trigger_words
-
-    @staticmethod
-    def _with_context(question: str, history: list[QaTurn]) -> str:
-        """Fold the last few questions in front of a follow-up.
-
-        Only the caller's own questions are used. Tags are snake_case English
-        identifiers and answers are long and bureaucratic -- neither sits in
-        the same space as a short colloquial Bangla query, so both would pull
-        the vector off the manifold rather than disambiguate it.
-        """
-        prior = [t.question.strip() for t in history[-settings.context_turns:] if t.question.strip()]
-        return " ".join(prior + [question]) if prior else question
+        answer = self.answers.get(tag)
+        if answer is None or len(answer.strip()) <= settings.min_answer_chars:
+            return True
+        fallback = self.answers.fallback()
+        return bool(fallback) and answer.strip() == fallback.strip() and tag != FALLBACK_TAG
 
     def _per_model_tags(self, similar: list[SimilarQuestion]) -> dict[str, str]:
         """The tag each model would pick on the strength of its own ranking.

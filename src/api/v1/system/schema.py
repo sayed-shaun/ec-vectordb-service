@@ -18,4 +18,5 @@ class HealthResponse(BaseModel):
     status: str
     store: dict[str, Any] = Field(default_factory=dict)
     models: dict[str, Any] = Field(default_factory=dict)
+    sessions: dict[str, Any] = Field(default_factory=dict)
 

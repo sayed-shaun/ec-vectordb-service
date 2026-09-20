@@ -88,9 +88,9 @@ breaks vote-based retrieval. All three searches go out in one
 question ─→ normalise ─→ 3× embed ─→ 3× ANN (top_k × 4) ─→ RRF ─→ tag vote ─→ answer
 ```
 
-### Two gates before an answer is returned
+### Three checks before an answer is returned
 
-A question is answered only if it passes both. Either failure returns the
+A question is answered only if it passes all three. Any failure returns the
 `unable_to_answer` tag with `confident: false` and a `fallback_reason`.
 
 **1. The similarity floor.** The winning tag's best hit must reach
@@ -146,9 +146,22 @@ With ~34 questions sharing a tag, one fluke at the top should not decide
 whether the question is answerable at all.
 
 `per_model_tag` and `top_cosine` report what each model picked and how well it
-matched, so a fallback can always be explained; `fallback_reason` is
-`low_similarity`, `model_disagreement` or `no_match`. The threshold never exceeds the number of models actually queried,
-or a single-model request would always fall back.
+matched, so a fallback can always be explained. The threshold never exceeds
+the number of models actually queried, or a single-model request would
+always fall back.
+
+**3. The placeholder guard.** Routing can be entirely correct and the answer
+still be worthless: `tag_answer.json` ships two defects that slipped into
+published data. `fraction` — the largest tag in the corpus at 772 questions —
+answers with the literal string `"tag"`. Sixteen other tags answer with a
+verbatim copy of the `unable_to_answer` disclaimer, which reads as a
+confident answer while saying nothing. `MIN_ANSWER_CHARS` catches the first
+shape by length; an exact-match check against the disclaimer catches the
+second. Either one refuses with `fallback_reason: "placeholder_answer"`
+rather than serving a fake answer.
+
+`fallback_reason` is one of `no_match`, `low_similarity`, `model_disagreement`
+or `placeholder_answer`.
 
 ### Two levels of voting
 
@@ -191,7 +204,11 @@ there for logging.
                     "qwen3": "card_information_correction",
                     "bge_m3": "card_information_correction"},
   "matched_question": "আমার এনআইডি কার্ডে নিজের নাম ভুল আছে কিভাবে ঠিক করব",
-  "took_ms": 453.07
+  "took_ms": 453.07,
+  "used_context": false,
+  "chat_id": null,
+  "history": [{"question": "আমার নাম ভুল আছে আমার nid কার্ডে কি করবো ?",
+               "answer": "চাহিত তথ্যের স্বপক্ষে দলিলাদি দাখিল পূর্বক …"}]
 }
 ```
 
@@ -200,29 +217,58 @@ the fallback copy and the call should escalate to a human.
 
 #### Follow-up questions
 
-Pass the previous turns back and a bare follow-up becomes answerable:
+A bare follow-up like `ফি কত?` ("how much is the fee?") names no subject.
+The question is always tried as asked first; only a question that fails —
+the floor, the agreement gate, or the placeholder guard — goes to an external
+rewrite service (`REWRITE_URL`), which turns it into a standalone question
+given the conversation so far. Trying bare first means a question that
+happens to arrive mid-conversation, but doesn't need rewriting, never pays
+for the external call, and it is what lets a corpus tag ever win on a bare
+match at all.
+
+Two ways to supply that conversation:
+
+**`chat_id`** — the server holds the turns, in memory, for `SESSION_TTL_S` of
+inactivity (default 30 min). Simplest for a caller: send only `question` and
+the same `chat_id` every turn.
+
+```json
+{"question": "ফি কত?", "chat_id": "conv-482"}
+```
+
+This is a plain in-process dict, not shared across workers or replicas — see
+`src/core/memory.py`. The Dockerfile runs a single worker today, which makes
+that safe; scale out to more than one and a chat's turn 2 can land on a
+different worker than turn 1 and lose its history with no error, just silent
+amnesia. A shared store is the fix at that point, not this module.
+
+**`history`** — the caller holds every turn and echoes it back exactly as
+`QaResponse.history` returns it:
 
 ```json
 {"question": "ফি কত?",
  "history": [{"question": "হারানো এনআইডি কার্ড পুনরায় তুলতে চাই",
-              "tag": "card_damaged_how_to_get_new_card"}]}
+              "answer": "সংশ্লিষ্ট উপজেলা/থানা নির্বাচন অফিস গিয়ে..."}]}
 ```
 
-Without it, `ফি কত?` routes to `fraction` — there are canonical questions
-literally titled "ফি কত", and `fraction` is the largest tag in the corpus with
-the stub answer. With it, the query becomes the prior question plus this one
-and routes to `card_lost_new_card_fee`.
+Slower to wire up, but the server holds nothing at all — genuinely stateless,
+so any instance can serve any turn regardless of worker count. `history` is
+ignored when `chat_id` is given.
 
-**The server stores nothing.** `history` comes back on every response; hand it
-straight to the next call. That keeps the service horizontally scalable — any
-instance can serve any turn.
+Without either, `ফি কত?` routes to `fraction` — there are canonical questions
+literally titled "ফি কত", and `fraction` is the largest tag in the corpus,
+with the stub answer described above. With one, the rewrite service resolves
+it to something like "এনআইডি রি-ইস্যু করতে ফি কত?" and routing improves
+accordingly — though note that a *better* question can still land on a
+placeholder-answer tag, and the guard above still refuses it: understanding
+the question correctly does not manufacture an answer the corpus never had.
 
-The trigger is the question's *shape*, not its confidence. A bare follow-up
-retrieves something confidently wrong rather than abstaining, so gating the
-retry on `confident` would never fire: in the gold run, 275 one-turn failures
-were **all** confident wrong routes and none were abstentions. Questions of
-`CONTEXT_TRIGGER_WORDS` (6) tokens or fewer borrow context; longer ones
-only do so if they failed alone, and `used_context` reports which happened.
+A rewrite failure never fails the request: `src/rewrite.py` degrades to the
+question as asked if the service is slow, unreachable, or answers with
+something unparseable, and `REWRITE_URL` empty (the default) skips the call
+entirely, which is what tests and local dev run with. `used_context` reports
+whether a rewrite was attempted — independent of whether it then succeeded,
+since `confident`/`fallback_reason` already say that.
 
 ### `POST /ec_bot/top_similar/`
 
@@ -312,6 +358,7 @@ src/
   core/
     config.py               settings + MODEL_SPECS (the three voters)
     logger.py               console + size-capped file logging
+    memory.py                in-memory, TTL-expiring chat_id session store
   embedding.py              model registry, device/dtype resolution, preflight
   store.py                  Qdrant: named vectors, filters, batch query
   service.py                embed → search → fuse
@@ -319,8 +366,10 @@ src/
   ec.py                     dataset loading + integrity audit
   ec_service.py             the tag vote and answer lookup
   normalize.py              bit-for-bit reproduction of the :8002 normaliser
+  rewrite.py                best-effort call to the external follow-up rewriter
   schemas.py                internal retrieval DTOs (not an HTTP contract)
 scripts/                    dataset fetch, ingest, demo
+static/                     the /static/index.html test console
 ```
 
 Three rules hold this together:
@@ -418,7 +467,7 @@ when a log driver already collects stdout.
 
 ```bash
 pip install -e ".[dev]"
-pytest             # 92 tests, no model downloads, no running Qdrant needed
+pytest             # 123 tests, no model downloads, no running Qdrant needed
 ```
 
 Tests swap in deterministic hash embedders and qdrant-client's in-memory mode,
@@ -442,8 +491,12 @@ One env var per setting, no prefix, from env or `.env`:
 | `RRF_K` | `60` | RRF damping |
 | `MIN_MODEL_AGREEMENT` | `2` | models that must agree on the tag |
 | `MIN_COSINE` | `0.78` | similarity floor below which nothing is answered |
-| `CONTEXT_TURNS` | `2` | prior questions folded into a follow-up |
-| `CONTEXT_TRIGGER_WORDS` | `6` | at or below this length, borrow context |
+| `MIN_ANSWER_CHARS` | `4` | answers at or below this length are placeholders |
+| `REWRITE_URL` | *(empty)* | follow-up rewrite service; empty disables it |
+| `REWRITE_TIMEOUT_S` | `3.0` | |
+| `SESSION_TTL_S` | `1800` | idle time before a `chat_id` conversation is forgotten |
+| `SESSION_MAX_COUNT` | `10000` | cap on concurrently held `chat_id` conversations |
+| `ENABLE_UI` | `true` | serves `/static/index.html`; off in production |
 | `EMBED_BATCH_SIZE` | `16` | raise to 64 on GPU |
 | `EAGER_LOAD_MODELS` | `false` | load weights at boot, not first query |
 | `LOG_LEVEL` | `INFO` | |

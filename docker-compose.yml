@@ -38,6 +38,12 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       LOG_FILE: /srv/logs/ec-vectordb.log
       LOG_MAX_BYTES: 10485760
+      # Empty by default -- no environment-specific URL belongs in a
+      # committed file. Set from the shell or an untracked .env to enable.
+      REWRITE_URL: ${REWRITE_URL:-}
+      REWRITE_TIMEOUT_S: ${REWRITE_TIMEOUT_S:-3.0}
+      SESSION_TTL_S: ${SESSION_TTL_S:-1800}
+      SESSION_MAX_COUNT: ${SESSION_MAX_COUNT:-10000}
     volumes:
       - models:/models          # HF weight cache, survives rebuilds
       - ./data:/srv/data:ro     # question_tag.csv + tag_answer.json

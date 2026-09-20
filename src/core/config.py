@@ -129,12 +129,23 @@ class Settings(BaseSettings):
 
     min_model_agreement: int = 2
     min_cosine: float = 0.78
-    # Prior questions folded into a follow-up that failed to stand alone.
-    context_turns: int = 2
-    # A question this short cannot carry its own subject, so prior turns are
-    # folded in even when it retrieves something confidently on its own --
-    # "ফি কত?" matches canonical questions literally titled "ফি কত".
-    context_trigger_words: int = 6
+    # An answer at or below this length is a placeholder, not an answer.
+    # tag_answer.json ships `fraction` -> "tag" (3 chars, 772 questions); the
+    # shortest real answer is 8, so this separates them with room to spare.
+    min_answer_chars: int = 4
+
+    # A follow-up like "how much?" names no subject on its own. An
+    # external service rewrites it into a standalone question given the
+    # conversation so far; empty disables the call and the raw question is
+    # used unchanged, which keeps local dev and tests independent of it.
+    rewrite_url: str = ""
+    rewrite_timeout_s: float = 3.0
+
+    # A chat_id lets the server hold a conversation's turns instead of the
+    # caller echoing `history` back each time. In memory, per-process --
+    # see src/core/memory.py for why, and what that costs.
+    session_ttl_s: float = 1800.0       # idle this long and a chat is forgotten
+    session_max_count: int = 10_000     # bound on concurrently held chats
 
     # The /ui test console. Off in production: it is a developer tool, and the
     # service has no authentication in front of it.
