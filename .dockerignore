@@ -1,0 +1,10 @@
+.venv/
+.git/
+.pytest_cache/
+__pycache__/
+qdrant_storage/
+data/
+tests/
+*.md
+.env
+logs/

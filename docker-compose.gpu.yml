@@ -1,0 +1,24 @@
+# GPU overlay. Use with:
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+#
+# Kept separate from the base file because a `devices: [driver: nvidia]`
+# reservation makes `up` fail outright on a host without the nvidia container
+# runtime -- the base stack has to stay runnable on a plain CPU box.
+#
+# All three models in fp16 need ~3.3 GB of weights plus ~0.3 GB CUDA context
+# and ~0.3 GB activations, so ~3885 MiB in total. On a card with less than
+# ~5 GB this file OOMs -- use docker-compose.gpu-4gb.yml instead, which leaves
+# bge_m3 on the CPU and fits the remaining two in ~2804 MiB.
+services:
+  api:
+    environment:
+      ECVDB_DEVICE: cuda
+      ECVDB_DTYPE: float16
+      ECVDB_EMBED_BATCH_SIZE: 64
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]

@@ -1,0 +1,56 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ec-vectordb-service"
+version = "0.1.0"
+description = "Multi-model Bangla retrieval for the EC FAQ bot: three embedding models vote, RRF fuses."
+readme = "README.md"
+requires-python = ">=3.11"
+
+# torch is deliberately NOT here. The CUDA base image already ships it, and a
+# second copy from PyPI would pull ~2.5 GB of duplicate CUDA libraries into the
+# image. It lives in the `torch` extra instead, for workstations and CI that
+# have no base image to inherit it from.
+dependencies = [
+    "fastapi==0.115.6",
+    "uvicorn[standard]==0.34.0",
+    "pydantic==2.10.4",
+    "pydantic-settings==2.7.0",
+    "qdrant-client==1.12.2",
+    "sentence-transformers==3.3.1",
+    "numpy==1.26.4",
+]
+
+[project.optional-dependencies]
+# >=2.6 is a hard floor, not caution. BAAI/bge-m3 publishes only
+# `pytorch_model.bin` with no safetensors, and transformers refuses to
+# `torch.load` a pickle checkpoint on older torch because of CVE-2025-32434;
+# on 2.5.1 the service dies at startup. See "Known constraints" in the README.
+torch = ["torch>=2.6"]
+dev = [
+    "ec-vectordb-service[torch]",
+    "pytest==8.3.4",
+    "httpx==0.28.1",
+]
+
+[tool.setuptools]
+# The ASGI entrypoint sits at the repo root, so `uvicorn main:app` works from
+# the working directory without a package prefix.
+py-modules = ["main"]
+
+[tool.setuptools.packages.find]
+# `where`/`include` are spelled out because the package is literally named
+# `src`, which collides with setuptools' src-layout heuristic -- that expects
+# `src/` to *contain* packages rather than to be one, and would otherwise
+# discover `core`, `api` and friends as top-level names.
+where = ["."]
+include = ["src*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+filterwarnings = [
+    "ignore:The anyio.abc.BlockingPortal alias is deprecated:DeprecationWarning",
+]

@@ -1,0 +1,50 @@
+services:
+  qdrant:
+    image: qdrant/qdrant:v1.12.4
+    container_name: ec-qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_storage:/qdrant/storage
+    healthcheck:
+      # The image is distroless-ish; /proc/net/tcp is the dependency-free way
+      # to assert the port is bound. 18BD is 6333 in hex.
+      test: ["CMD-SHELL", "grep -q ':18BD' /proc/net/tcp || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: .
+    container_name: ec-vectordb-api
+    ports:
+      - "8000:8000"
+    depends_on:
+      qdrant:
+        condition: service_healthy
+    environment:
+      ECVDB_QDRANT_URL: http://qdrant:6333
+      ECVDB_COLLECTION: ec_documents
+      # CPU by default so the stack boots anywhere. Switch to GPU with the
+      # overlay: docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+      ECVDB_DEVICE: ${ECVDB_DEVICE:-cpu}
+      ECVDB_DTYPE: ${ECVDB_DTYPE:-float32}
+      # Overridden per-card by the GPU overlays; .env never reaches
+      # the container, so per-model placement has to come through here.
+      ECVDB_DEVICE_OVERRIDES: ${ECVDB_DEVICE_OVERRIDES:-}
+      ECVDB_EMBED_BATCH_SIZE: 16
+      ECVDB_EAGER_LOAD_MODELS: "true"
+      ECVDB_LOG_LEVEL: ${ECVDB_LOG_LEVEL:-INFO}
+      ECVDB_LOG_FILE: /srv/logs/ec-vectordb.log
+      ECVDB_LOG_MAX_BYTES: 10485760
+    volumes:
+      - models:/models          # HF weight cache, survives rebuilds
+      - ./data:/srv/data:ro     # question_tag.csv + tag_answer.json
+      # Bind-mounted so the log outlives the container. It is capped at 10 MiB
+      # by the handler, so this cannot grow unbounded on the host either.
+      - ./logs:/srv/logs
+
+volumes:
+  qdrant_storage:
+  models:

@@ -1,0 +1,117 @@
+"""Index the EC FAQ corpus into Qdrant.
+
+    python scripts/ingest_ec.py [--limit N] [--batch 256] [--normalizer compat]
+
+Embeds ~18k canonical questions with all three models. Only the question text
+is embedded; the tag and the original surface form ride along in the payload
+and the answer is resolved at query time from tag_answer.json.
+"""
+
+from __future__ import annotations
+
+import argparse
+import logging
+import sys
+import time
+
+sys.path.insert(0, ".")
+
+from src.schemas import Document  # noqa: E402
+from src.core.config import MODEL_SPECS  # noqa: E402
+from src.core.logger import setup_logging  # noqa: E402
+from src.ec import AnswerStore, audit, load_questions  # noqa: E402
+from src.normalize import normalize  # noqa: E402
+from src.service import RetrievalService  # noqa: E402
+from src.store import VectorStore  # noqa: E402
+
+setup_logging()
+log = logging.getLogger("ingest")
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--limit", type=int, default=0, help="index only the first N rows")
+    ap.add_argument("--batch", type=int, default=256, help="rows per upsert")
+    ap.add_argument("--normalizer", default="compat", choices=["compat", "safe", "none"])
+    ap.add_argument("--recreate", action="store_true", help="drop the collection first")
+    ap.add_argument(
+        "--resume", action="store_true",
+        help="skip questions already indexed (safe to re-run after a crash)",
+    )
+    args = ap.parse_args()
+
+    questions = load_questions()
+    answers = AnswerStore.load()
+
+    report = audit(questions, answers)
+    log.info(
+        "corpus: %d questions, %d tags, %d answers",
+        report["questions"], report["reachable_tags"], report["answer_entries"],
+    )
+    if report["tags_without_answer"]:
+        log.error("ABORT: %d tags have no answer", len(report["tags_without_answer"]))
+        sys.exit(1)
+    if report["questions_with_degenerate_answer"]:
+        log.warning(
+            "%d questions (%.1f%%) resolve to a stub answer; worst: %s",
+            report["questions_with_degenerate_answer"],
+            report["questions_with_degenerate_answer"] / report["questions"] * 100,
+            report["degenerate_answers"][0]["tag"],
+        )
+
+    if args.limit:
+        questions = questions[: args.limit]
+
+    store = VectorStore()
+    if args.recreate and store.client.collection_exists(store.collection):
+        log.info("dropping collection %s", store.collection)
+        store.client.delete_collection(store.collection)
+    store.ensure_collection()
+    service = RetrievalService(store)
+
+    for spec in MODEL_SPECS:
+        log.info(
+            "model %s -> %s/%s", spec.name, spec.resolved_device(), spec.resolved_dtype()
+        )
+
+    if args.resume and not args.recreate:
+        already = store.existing_doc_ids([q.qid for q in questions])
+        if already:
+            before = len(questions)
+            questions = [q for q in questions if q.qid not in already]
+            log.info("resume: %d already indexed, %d to go", before - len(questions), len(questions))
+    if not questions:
+        log.info("nothing to do; collection holds %d points", store.count())
+        return
+
+    total, started = 0, time.perf_counter()
+    for i in range(0, len(questions), args.batch):
+        chunk = questions[i : i + args.batch]
+        docs = [
+            Document(
+                doc_id=q.qid,
+                text=normalize(q.question, args.normalizer),
+                metadata={
+                    "tag": q.tag,
+                    "raw_question": q.question,
+                    "source": "question_tag.csv",
+                    "lang": "bn",
+                },
+            )
+            for q in chunk
+        ]
+        count, _ = service.ingest(docs)
+        total += count
+        elapsed = time.perf_counter() - started
+        rate = total / elapsed if elapsed else 0
+        remaining = (len(questions) - total) / rate if rate else 0
+        log.info(
+            "%d/%d  %.1f rows/s  eta %.1f min",
+            total, len(questions), rate, remaining / 60,
+        )
+
+    log.info("done: %d points in %.1f min", store.count(), (time.perf_counter() - started) / 60)
+
+
+if __name__ == "__main__":
+    main()
