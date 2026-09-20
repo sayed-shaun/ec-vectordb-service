@@ -47,7 +47,7 @@ class TopSimilarRequest(BaseModel):
         le=1.0,
         description=(
             "The winning tag's best hit must reach this cosine, else the "
-            "fallback is returned. Defaults to ECVDB_MIN_COSINE (0.70)."
+            "fallback is returned. Defaults to MIN_COSINE (0.70)."
         ),
     )
     min_model_agreement: int | None = Field(
@@ -57,7 +57,7 @@ class TopSimilarRequest(BaseModel):
         description=(
             "How many models must independently pick the winning tag. Below "
             "this the fallback tag is returned instead. Defaults to "
-            "ECVDB_MIN_MODEL_AGREEMENT (2)."
+            "MIN_MODEL_AGREEMENT (2)."
         ),
     )
     normalizer: Literal["compat", "safe", "none"] = "compat"

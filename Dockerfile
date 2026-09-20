@@ -39,7 +39,7 @@ VOLUME ["/models"]
 
 EXPOSE 8000
 
-# start-period is generous on purpose: with ECVDB_EAGER_LOAD_MODELS the first
+# start-period is generous on purpose: with EAGER_LOAD_MODELS the first
 # boot downloads ~3.5 GB of weights into /models before the port answers.
 # Subsequent boots hit the cache and come up in well under a minute.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=900s --retries=3 \

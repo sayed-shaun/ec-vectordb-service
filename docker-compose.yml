@@ -24,20 +24,20 @@ services:
       qdrant:
         condition: service_healthy
     environment:
-      ECVDB_QDRANT_URL: http://qdrant:6333
-      ECVDB_COLLECTION: ec_documents
+      QDRANT_URL: http://qdrant:6333
+      COLLECTION: ec_documents
       # CPU by default so the stack boots anywhere. Switch to GPU with the
       # overlay: docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
-      ECVDB_DEVICE: ${ECVDB_DEVICE:-cpu}
-      ECVDB_DTYPE: ${ECVDB_DTYPE:-float32}
+      DEVICE: ${DEVICE:-cpu}
+      DTYPE: ${DTYPE:-float32}
       # Overridden per-card by the GPU overlays; .env never reaches
       # the container, so per-model placement has to come through here.
-      ECVDB_DEVICE_OVERRIDES: ${ECVDB_DEVICE_OVERRIDES:-}
-      ECVDB_EMBED_BATCH_SIZE: 16
-      ECVDB_EAGER_LOAD_MODELS: "true"
-      ECVDB_LOG_LEVEL: ${ECVDB_LOG_LEVEL:-INFO}
-      ECVDB_LOG_FILE: /srv/logs/ec-vectordb.log
-      ECVDB_LOG_MAX_BYTES: 10485760
+      DEVICE_OVERRIDES: ${DEVICE_OVERRIDES:-}
+      EMBED_BATCH_SIZE: 16
+      EAGER_LOAD_MODELS: "true"
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_FILE: /srv/logs/ec-vectordb.log
+      LOG_MAX_BYTES: 10485760
     volumes:
       - models:/models          # HF weight cache, survives rebuilds
       - ./data:/srv/data:ro     # question_tag.csv + tag_answer.json

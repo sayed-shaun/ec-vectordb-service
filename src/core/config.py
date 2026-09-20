@@ -115,7 +115,7 @@ MODELS_BY_NAME: dict[str, ModelSpec] = {m.name: m for m in MODEL_SPECS}
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_prefix="ECVDB_", env_file=".env", extra="ignore", protected_namespaces=()
+        env_prefix="", env_file=".env", extra="ignore", protected_namespaces=()
     )
 
     qdrant_url: str = "http://localhost:6333"

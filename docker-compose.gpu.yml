@@ -12,9 +12,9 @@
 services:
   api:
     environment:
-      ECVDB_DEVICE: cuda
-      ECVDB_DTYPE: float16
-      ECVDB_EMBED_BATCH_SIZE: 64
+      DEVICE: cuda
+      DTYPE: float16
+      EMBED_BATCH_SIZE: 64
     deploy:
       resources:
         reservations:

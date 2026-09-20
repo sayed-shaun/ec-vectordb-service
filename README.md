@@ -94,7 +94,7 @@ A question is answered only if it passes both. Either failure returns the
 `unable_to_answer` tag with `confident: false` and a `fallback_reason`.
 
 **1. The similarity floor.** The winning tag's best hit must reach
-`ECVDB_MIN_COSINE`. This is the gate that matters most, because ANN retrieval
+`MIN_COSINE`. This is the gate that matters most, because ANN retrieval
 always returns *some* nearest neighbour however far away it is — ask for a
 biriyani recipe and you get a birth-certificate answer at cosine 0.65.
 
@@ -131,7 +131,7 @@ Two apparent off-domain failures are not failures: "write me a poem" scores
 **2. The consensus gate.**
 
 Each model also picks a tag on the strength of its own ranking, and at least
-`ECVDB_MIN_MODEL_AGREEMENT` of the three must land on the same one. This
+`MIN_MODEL_AGREEMENT` of the three must land on the same one. This
 catches *ambiguity between two plausible EC topics*, which the floor cannot
 see — both candidates match well, the models just disagree about which.
 
@@ -221,7 +221,7 @@ The trigger is the question's *shape*, not its confidence. A bare follow-up
 retrieves something confidently wrong rather than abstaining, so gating the
 retry on `confident` would never fire: in the gold run, 275 one-turn failures
 were **all** confident wrong routes and none were abstentions. Questions of
-`ECVDB_CONTEXT_TRIGGER_WORDS` (6) tokens or fewer borrow context; longer ones
+`CONTEXT_TRIGGER_WORDS` (6) tokens or fewer borrow context; longer ones
 only do so if they failed alone, and `used_context` reports which happened.
 
 ### `POST /ec_bot/top_similar/`
@@ -273,7 +273,7 @@ reach the port. `POST /documents` and `POST /documents/delete` were an
 unauthenticated write and delete surface that no caller used -- ingest runs
 in-process through `scripts/ingest_ec.py`, never over HTTP -- so they are
 gone, along with `POST /query` (no caller; `top_similar` covers it) and
-`POST /warmup` (meaningless while `ECVDB_EAGER_LOAD_MODELS` is `true`).
+`POST /warmup` (meaningless while `EAGER_LOAD_MODELS` is `true`).
 `tests/test_api.py` pins the route set so it cannot quietly grow back.
 
 Writes happen through the ingest script, on the host, with access to the
@@ -341,7 +341,7 @@ Three rules hold this together:
 
 ## Run it
 
-Everything runs in Docker. **`ECVDB_DEVICE` is the only setting that differs
+Everything runs in Docker. **`DEVICE` is the only setting that differs
 between this workstation and the GPU server** — `cpu` here, `cuda` there (or
 `auto` to detect). An explicit `cuda` degrades to CPU rather than crashing if
 the runtime is missing, so the same image boots in both places.
@@ -382,18 +382,18 @@ reach. This is why fp16-everything is not the shipped default.
 **Split across devices instead** — this fits in ~2.2 GiB:
 
 ```bash
-ECVDB_DEVICE=cuda
-ECVDB_DTYPE=float16
-ECVDB_DEVICE_OVERRIDES='{"bge_m3":"cpu"}'
+DEVICE=cuda
+DTYPE=float16
+DEVICE_OVERRIDES='{"bge_m3":"cpu"}'
 ```
 
-A CPU-resident model stays fp32 regardless of `ECVDB_DTYPE`: x86 has no native
+A CPU-resident model stays fp32 regardless of `DTYPE`: x86 has no native
 fp16 compute path, so half precision there costs speed and saves RAM you are
 not short of. `GET /health` reports the effective device and dtype per model.
 
 ## Logging
 
-Console plus a file, both at `ECVDB_LOG_LEVEL`. The file is **hard-capped at
+Console plus a file, both at `LOG_LEVEL`. The file is **hard-capped at
 10 MiB**: past that it is truncated in place and starts again, with a marker
 line explaining the gap, so the service cannot fill a disk unattended.
 
@@ -405,13 +405,13 @@ and `tests/test_logging.py` pins the behaviour.
 
 Truncating discards the older half of the history at exactly the moment the cap
 is hit. When a post-mortem needs to span that boundary, set
-`ECVDB_LOG_BACKUP_COUNT=2` first — that restores ordinary stdlib rotation, at
+`LOG_BACKUP_COUNT=2` first — that restores ordinary stdlib rotation, at
 `(backups + 1) × 10 MiB` on disk.
 
 uvicorn's own loggers are re-pointed at the root logger, so startup and access
 lines land in the same file rather than in uvicorn's private handlers. In
 compose the file is bind-mounted to `./logs/` so it outlives the container; set
-`ECVDB_LOG_FILE=` (empty) to log to the console only, which is what you want
+`LOG_FILE=` (empty) to log to the console only, which is what you want
 when a log driver already collects stdout.
 
 ## Tests
@@ -429,27 +429,27 @@ the index and queries have diverged.
 
 ## Configuration
 
-`ECVDB_` prefix, from env or `.env`:
+One env var per setting, no prefix, from env or `.env`:
 
 | var | default | |
 |---|---|---|
-| `ECVDB_QDRANT_URL` | `http://localhost:6333` | |
-| `ECVDB_COLLECTION` | `ec_documents` | |
-| `ECVDB_DEVICE` | `cpu` | `cuda` to use the GPU |
-| `ECVDB_DTYPE` | `float32` | `float16` halves VRAM (GPU only) |
-| `ECVDB_DEVICE_OVERRIDES` | `{}` | per-model device, e.g. `{"bge_m3":"cpu"}` |
-| `ECVDB_CANDIDATE_MULTIPLIER` | `4` | per-model over-fetch before fusion |
-| `ECVDB_RRF_K` | `60` | RRF damping |
-| `ECVDB_MIN_MODEL_AGREEMENT` | `2` | models that must agree on the tag |
-| `ECVDB_MIN_COSINE` | `0.78` | similarity floor below which nothing is answered |
-| `ECVDB_CONTEXT_TURNS` | `2` | prior questions folded into a follow-up |
-| `ECVDB_CONTEXT_TRIGGER_WORDS` | `6` | at or below this length, borrow context |
-| `ECVDB_EMBED_BATCH_SIZE` | `16` | raise to 64 on GPU |
-| `ECVDB_EAGER_LOAD_MODELS` | `false` | load weights at boot, not first query |
-| `ECVDB_LOG_LEVEL` | `INFO` | |
-| `ECVDB_LOG_FILE` | `logs/ec-vectordb.log` | empty string = console only |
-| `ECVDB_LOG_MAX_BYTES` | `10485760` | 10 MiB; truncated past this |
-| `ECVDB_LOG_BACKUP_COUNT` | `0` | `0` truncates; higher keeps N old files |
+| `QDRANT_URL` | `http://localhost:6333` | |
+| `COLLECTION` | `ec_documents` | |
+| `DEVICE` | `cpu` | `cuda` to use the GPU |
+| `DTYPE` | `float32` | `float16` halves VRAM (GPU only) |
+| `DEVICE_OVERRIDES` | `{}` | per-model device, e.g. `{"bge_m3":"cpu"}` |
+| `CANDIDATE_MULTIPLIER` | `4` | per-model over-fetch before fusion |
+| `RRF_K` | `60` | RRF damping |
+| `MIN_MODEL_AGREEMENT` | `2` | models that must agree on the tag |
+| `MIN_COSINE` | `0.78` | similarity floor below which nothing is answered |
+| `CONTEXT_TURNS` | `2` | prior questions folded into a follow-up |
+| `CONTEXT_TRIGGER_WORDS` | `6` | at or below this length, borrow context |
+| `EMBED_BATCH_SIZE` | `16` | raise to 64 on GPU |
+| `EAGER_LOAD_MODELS` | `false` | load weights at boot, not first query |
+| `LOG_LEVEL` | `INFO` | |
+| `LOG_FILE` | `logs/ec-vectordb.log` | empty string = console only |
+| `LOG_MAX_BYTES` | `10485760` | 10 MiB; truncated past this |
+| `LOG_BACKUP_COUNT` | `0` | `0` truncates; higher keeps N old files |
 
 ## Known constraints
 

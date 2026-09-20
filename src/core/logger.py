@@ -1,6 +1,6 @@
 """Logging setup: a console stream plus a size-capped file.
 
-The file is hard-capped at ``ECVDB_LOG_MAX_BYTES`` (10 MiB by default).
+The file is hard-capped at ``LOG_MAX_BYTES`` (10 MiB by default).
 """
 
 from __future__ import annotations
