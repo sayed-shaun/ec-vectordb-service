@@ -198,6 +198,32 @@ there for logging.
 Branch on `confident`, not on the answer text: when it is false the answer is
 the fallback copy and the call should escalate to a human.
 
+#### Follow-up questions
+
+Pass the previous turns back and a bare follow-up becomes answerable:
+
+```json
+{"question": "ফি কত?",
+ "history": [{"question": "হারানো এনআইডি কার্ড পুনরায় তুলতে চাই",
+              "tag": "card_damaged_how_to_get_new_card"}]}
+```
+
+Without it, `ফি কত?` routes to `fraction` — there are canonical questions
+literally titled "ফি কত", and `fraction` is the largest tag in the corpus with
+the stub answer. With it, the query becomes the prior question plus this one
+and routes to `card_lost_new_card_fee`.
+
+**The server stores nothing.** `history` comes back on every response; hand it
+straight to the next call. That keeps the service horizontally scalable — any
+instance can serve any turn.
+
+The trigger is the question's *shape*, not its confidence. A bare follow-up
+retrieves something confidently wrong rather than abstaining, so gating the
+retry on `confident` would never fire: in the gold run, 275 one-turn failures
+were **all** confident wrong routes and none were abstentions. Questions of
+`ECVDB_CONTEXT_TRIGGER_WORDS` (6) tokens or fewer borrow context; longer ones
+only do so if they failed alone, and `used_context` reports which happened.
+
 ### `POST /ec_bot/top_similar/`
 
 Request — `question` and `top_k` match the existing service; the rest is
@@ -392,7 +418,7 @@ when a log driver already collects stdout.
 
 ```bash
 pip install -e ".[dev]"
-pytest             # 85 tests, no model downloads, no running Qdrant needed
+pytest             # 92 tests, no model downloads, no running Qdrant needed
 ```
 
 Tests swap in deterministic hash embedders and qdrant-client's in-memory mode,
@@ -416,6 +442,8 @@ the index and queries have diverged.
 | `ECVDB_RRF_K` | `60` | RRF damping |
 | `ECVDB_MIN_MODEL_AGREEMENT` | `2` | models that must agree on the tag |
 | `ECVDB_MIN_COSINE` | `0.78` | similarity floor below which nothing is answered |
+| `ECVDB_CONTEXT_TURNS` | `2` | prior questions folded into a follow-up |
+| `ECVDB_CONTEXT_TRIGGER_WORDS` | `6` | at or below this length, borrow context |
 | `ECVDB_EMBED_BATCH_SIZE` | `16` | raise to 64 on GPU |
 | `ECVDB_EAGER_LOAD_MODELS` | `false` | load weights at boot, not first query |
 | `ECVDB_LOG_LEVEL` | `INFO` | |

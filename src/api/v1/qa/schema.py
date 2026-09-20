@@ -4,11 +4,23 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
-__all__ = ["QaRequest", "QaResponse"]
+__all__ = ["QaRequest", "QaResponse", "QaTurn"]
+
+
+class QaTurn(BaseModel):
+    """One exchange, as the caller replays it back to us."""
+
+    question: str
+    tag: str | None = None
 
 
 class QaRequest(BaseModel):
-    """Only ``question`` is required."""
+    """Only ``question`` is required.
+
+    ``history`` makes a follow-up answerable: "how much is the fee?" carries no
+    subject on its own. The server stores nothing -- the caller holds the
+    history and passes it back, so the service stays horizontally scalable.
+    """
 
     model_config = ConfigDict(
         json_schema_extra={
@@ -17,6 +29,10 @@ class QaRequest(BaseModel):
     )
 
     question: str = Field(..., min_length=1)
+    history: list[QaTurn] = Field(
+        default_factory=list,
+        description="Prior turns, oldest first. Echoed back with this turn appended.",
+    )
     min_model_agreement: int | None = Field(
         None,
         ge=1,
@@ -53,5 +69,11 @@ class QaResponse(BaseModel):
     )
     matched_question: str | None = Field(
         None, description="The closest canonical question, for logging and review."
+    )
+    history: list[QaTurn] = Field(
+        default_factory=list, description="Pass this straight back on the next turn."
+    )
+    used_context: bool = Field(
+        False, description="True when history rescued a question that failed standalone."
     )
     took_ms: float = 0.0

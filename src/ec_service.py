@@ -12,7 +12,7 @@ from src.api.v1.ec_bot.schema import (
     TopSimilarRequest,
     TopSimilarResponse,
 )
-from src.api.v1.qa.schema import QaRequest, QaResponse
+from src.api.v1.qa.schema import QaRequest, QaResponse, QaTurn
 from src.schemas import QueryRequest
 from src.core.config import settings
 from src.ec import FALLBACK_TAG, AnswerStore
@@ -111,17 +111,44 @@ class EcBotService:
         )
 
     def answer(self, req: QaRequest) -> QaResponse:
-        """Reduce a full retrieval to the one thing a front end needs."""
-        full = self.top_similar(
-            TopSimilarRequest(
-                question=req.question,
-                top_k=req.top_k,
-                normalizer=req.normalizer,
-                min_model_agreement=req.min_model_agreement,
-                min_cosine=req.min_cosine,
-                include_answer=True,
+        """Reduce a full retrieval to the one thing a front end needs.
+
+        A follow-up like "how much is the fee?" names no subject, so it is
+        retried against the prior turns when it fails on its own. The retry
+        only ever runs after a failure, so carrying history cannot change an
+        answer that already stood up without it.
+        """
+        def ask(question: str):
+            return self.top_similar(
+                TopSimilarRequest(
+                    question=question,
+                    top_k=req.top_k,
+                    normalizer=req.normalizer,
+                    min_model_agreement=req.min_model_agreement,
+                    min_cosine=req.min_cosine,
+                    include_answer=True,
+                )
             )
-        )
+
+        full = ask(req.question)
+        used_context = False
+
+        # A confident answer is not evidence the question was understood: a
+        # bare "ফি কত?" matches canonical questions literally titled "ফি কত"
+        # at 0.89 and lands on the wrong tag. Shape decides, not confidence.
+        if req.history and (self._needs_context(req.question) or not full.confident):
+            expanded = self._with_context(req.question, req.history)
+            if expanded != req.question:
+                retry = ask(expanded)
+                if retry.confident:
+                    log.info(
+                        "context applied to %r -> %r: %s -> %s",
+                        req.question, expanded, full.tag, retry.tag,
+                    )
+                    full, used_context = retry, True
+
+        history = list(req.history) + [QaTurn(question=req.question, tag=full.tag)]
+
         return QaResponse(
             question=req.question,
             answer=full.answer,
@@ -133,7 +160,32 @@ class EcBotService:
             fallback_reason=full.fallback_reason,
             matched_question=full.top_similar[0].question if full.top_similar else None,
             took_ms=full.took_ms,
+            history=history,
+            used_context=used_context,
         )
+
+    @staticmethod
+    def _needs_context(question: str) -> bool:
+        """Whether a question is too bare to carry its own subject.
+
+        Length is the signal that survives: the follow-ups in this corpus are
+        overwhelmingly short elisions -- "ফি কত?", "কতদিন লাগে?", "কাগজপত্র কী
+        কী?" -- rather than explicit anaphora, so a leading-pronoun test alone
+        misses most of them.
+        """
+        return len(question.split()) <= settings.context_trigger_words
+
+    @staticmethod
+    def _with_context(question: str, history: list[QaTurn]) -> str:
+        """Fold the last few questions in front of a follow-up.
+
+        Only the caller's own questions are used. Tags are snake_case English
+        identifiers and answers are long and bureaucratic -- neither sits in
+        the same space as a short colloquial Bangla query, so both would pull
+        the vector off the manifold rather than disambiguate it.
+        """
+        prior = [t.question.strip() for t in history[-settings.context_turns:] if t.question.strip()]
+        return " ".join(prior + [question]) if prior else question
 
     def _per_model_tags(self, similar: list[SimilarQuestion]) -> dict[str, str]:
         """The tag each model would pick on the strength of its own ranking.

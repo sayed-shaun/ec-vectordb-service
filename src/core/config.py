@@ -129,6 +129,12 @@ class Settings(BaseSettings):
 
     min_model_agreement: int = 2
     min_cosine: float = 0.78
+    # Prior questions folded into a follow-up that failed to stand alone.
+    context_turns: int = 2
+    # A question this short cannot carry its own subject, so prior turns are
+    # folded in even when it retrieves something confidently on its own --
+    # "ফি কত?" matches canonical questions literally titled "ফি কত".
+    context_trigger_words: int = 6
     embed_batch_size: int = 16
 
     eager_load_models: bool = False
