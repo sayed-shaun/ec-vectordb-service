@@ -72,3 +72,18 @@ def test_public_route_set_is_exactly_the_four_supported_endpoints():
 def test_removed_write_routes_are_gone(client):
     for path in ("/documents", "/documents/delete", "/query", "/warmup"):
         assert client.post(path, json={}).status_code == 404, path
+
+
+def test_console_is_served_from_the_api_origin(client):
+    """Same origin is the point: the page calls /qa relatively, so there is no
+    CORS middleware to keep in step with whatever port it is exposed on."""
+    res = client.get("/static/index.html")
+    assert res.status_code == 200
+    assert res.headers["content-type"].startswith("text/html")
+    assert "fetch('/qa'" in res.text
+
+
+def test_console_is_absent_from_the_openapi_schema(client):
+    """It is a developer tool, not part of the contract."""
+    paths = client.get("/openapi.json").json()["paths"]
+    assert not [p for p in paths if p.startswith("/static")]

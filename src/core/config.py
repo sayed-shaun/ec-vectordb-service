@@ -135,6 +135,10 @@ class Settings(BaseSettings):
     # folded in even when it retrieves something confidently on its own --
     # "ফি কত?" matches canonical questions literally titled "ফি কত".
     context_trigger_words: int = 6
+
+    # The /ui test console. Off in production: it is a developer tool, and the
+    # service has no authentication in front of it.
+    enable_ui: bool = True
     embed_batch_size: int = 16
 
     eager_load_models: bool = False

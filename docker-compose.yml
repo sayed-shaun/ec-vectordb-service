@@ -41,6 +41,8 @@ services:
     volumes:
       - models:/models          # HF weight cache, survives rebuilds
       - ./data:/srv/data:ro     # question_tag.csv + tag_answer.json
+      # Not baked into the image: edit the page and reload, no rebuild.
+      - ./static:/srv/static:ro
       # Bind-mounted so the log outlives the container. It is capped at 10 MiB
       # by the handler, so this cannot grow unbounded on the host either.
       - ./logs:/srv/logs
