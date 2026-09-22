@@ -49,7 +49,9 @@ class ModelSpec:
         ``"auto"`` picks CUDA when usable; an explicit ``"cuda"`` degrades to
         CPU rather than crashing, so one image boots in both places.
         """
-        device = self.device or settings.device_overrides.get(self.name) or settings.device
+        device = (
+            self.device or settings.device_overrides.get(self.name) or settings.device
+        )
         if device == "cpu":
             return "cpu"
 
@@ -65,7 +67,9 @@ class ModelSpec:
             return "cuda" if available else "cpu"
         if available:
             return device
-        log.warning("device %r requested but CUDA is unavailable; falling back to CPU", device)
+        log.warning(
+            "device %r requested but CUDA is unavailable; falling back to CPU", device
+        )
         return "cpu"
 
     def vram_estimate_mib(self) -> float:
@@ -83,11 +87,32 @@ class ModelSpec:
 MODEL_SPECS: tuple[ModelSpec, ...] = (
     ModelSpec(
         name="e5",
-        hf_id="intfloat/multilingual-e5-large",
+        hf_id="intfloat/multilingual-e5-large-instruct",
         dim=1024,
         param_count=559_890_432,
-        query_prefix="query: ",
-        passage_prefix="passage: ",
+        # e5-instruct uses one shared instruction prefix for both sides, not
+        # e5-base's asymmetric "query: "/"passage: ". Corpus-wide leave-one-out
+        # benchmark (18k questions, this exact prefix): 91.5% -> 93.5% overall,
+        # 78.3% -> 91.3% on the name/profession/spouse/parent-correction
+        # confusion cluster that "query: "/"passage: " kept losing on.
+        query_prefix=(
+            "Instruct: You are an expert in matching Bangladeshi National "
+            "Identity Card (NID) and voter registration queries. Your task is "
+            "to identify the most semantically relevant question from the "
+            "provided document, considering context, intent, and specific "
+            "details. Use semantic similarity and contextual understanding to "
+            "retrieve the closest match, prioritizing exact phrase matches and "
+            "context-aware matching.\n"
+        ),
+        passage_prefix=(
+            "Instruct: You are an expert in matching Bangladeshi National "
+            "Identity Card (NID) and voter registration queries. Your task is "
+            "to identify the most semantically relevant question from the "
+            "provided document, considering context, intent, and specific "
+            "details. Use semantic similarity and contextual understanding to "
+            "retrieve the closest match, prioritizing exact phrase matches and "
+            "context-aware matching.\n"
+        ),
         max_seq_length=512,
         weight=1.0,
     ),
@@ -144,8 +169,8 @@ class Settings(BaseSettings):
     # A chat_id lets the server hold a conversation's turns instead of the
     # caller echoing `history` back each time. In memory, per-process --
     # see src/core/memory.py for why, and what that costs.
-    session_ttl_s: float = 1800.0       # idle this long and a chat is forgotten
-    session_max_count: int = 10_000     # bound on concurrently held chats
+    session_ttl_s: float = 1800.0  # idle this long and a chat is forgotten
+    session_max_count: int = 10_000  # bound on concurrently held chats
 
     # The /ui test console. Off in production: it is a developer tool, and the
     # service has no authentication in front of it.
