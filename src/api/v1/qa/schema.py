@@ -93,7 +93,10 @@ class QaResponse(BaseModel):
         default_factory=list, description="Pass this straight back on the next turn."
     )
     used_context: bool = Field(
-        False, description="True when the rewrite service judged this a follow-up."
+        False, description="True when the rewrite service returned a different question."
+    )
+    rewritten_question: str | None = Field(
+        None, description="What the rewrite service turned the question into, if it ran."
     )
     chat_id: str | None = Field(
         None, description="Echoed back; pass it on the next turn to keep the conversation."

@@ -134,10 +134,9 @@ class EcBotService:
         Trying bare first is what lets a question that happens to arrive
         mid-conversation, but doesn't need it, skip the external call
         entirely -- and it is what lets a corpus tag ever win on a bare
-        match at all. A short acknowledgement like "আচ্ছা" that has no
-        canonical form of its own in the corpus will still fail and fall
-        through to the rewriter same as before; that is a coverage gap in
-        the corpus, not something to special-case here (see CLAUDE.md).
+        match at all. A fragment like "কী কাগজ লাগবে?" that names no subject
+        of its own will fail and fall through to the rewriter; a question
+        that already stands on its own never pays that cost.
         """
         def ask(question: str):
             return self.top_similar(
@@ -158,6 +157,7 @@ class EcBotService:
 
         full = ask(req.question)
         used_context = False
+        rewritten_question: str | None = None
 
         if history_pairs and not full.confident:
             rewritten, was_rewritten = rewrite_question(
@@ -175,6 +175,7 @@ class EcBotService:
             # from never having tried, and collapsing the two would hide it.
             used_context = was_rewritten and rewritten != req.question
             if used_context:
+                rewritten_question = rewritten
                 retry = ask(rewritten)
                 if retry.confident:
                     full = retry
@@ -195,6 +196,7 @@ class EcBotService:
             top_cosine=full.top_cosine,
             fallback_reason=full.fallback_reason,
             matched_question=full.top_similar[0].question if full.top_similar else None,
+            rewritten_question=rewritten_question,
             took_ms=full.took_ms,
             history=history,
             used_context=used_context,

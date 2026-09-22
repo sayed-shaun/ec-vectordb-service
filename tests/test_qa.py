@@ -334,4 +334,5 @@ def test_bare_question_never_calls_the_rewriter_when_it_already_succeeds(qa, mon
     )
     assert not called, "the bare question already succeeded; rewriting it would be wasted work"
     assert res.used_context is False
+    assert res.rewritten_question is None
     assert res.confident is True

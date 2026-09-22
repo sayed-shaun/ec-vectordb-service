@@ -143,6 +143,7 @@ function render(question, data, error) {
       ${chip('cosine', Number(data.top_cosine).toFixed(3))}
       ${chip('agreement', data.model_agreement + '/3')}
       ${data.used_context ? chip('used_context', 'true', 'warn') : ''}
+      ${data.rewritten_question ? chip('rewritten', data.rewritten_question, 'warn') : ''}
       ${chip('took', Math.round(data.took_ms) + 'ms')}
       ${per}
       ${data.matched_question ? chip('matched', data.matched_question) : ''}
