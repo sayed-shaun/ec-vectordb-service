@@ -93,6 +93,7 @@ def main() -> None:
                 text=normalize(q.question, args.normalizer),
                 metadata={
                     "tag": q.tag,
+                    "answer": answers.get(q.tag),
                     "raw_question": q.question,
                     "source": "question_tag.csv",
                     "lang": "bn",
