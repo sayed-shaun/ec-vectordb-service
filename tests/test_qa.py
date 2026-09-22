@@ -25,6 +25,43 @@ def test_answers_a_known_question(qa):
     assert res.matched_question
 
 
+def test_matched_question_belongs_to_the_winning_tag_not_rank_one(qa, monkeypatch):
+    """The winning tag comes from aggregate evidence across several
+    candidates (_vote_tags), so it can differ from the single best-ranked
+    candidate's own tag. `matched_question` must reflect the tag actually
+    being answered, not whichever question happens to rank #1."""
+    from src.api.v1.ec_bot.schema import SimilarQuestion, TopSimilarResponse
+
+    monkeypatch.setattr(
+        EcBotService,
+        "top_similar",
+        lambda self, req: TopSimilarResponse(
+            input_question=req.question,
+            normalized_question=req.question,
+            top_similar=[
+                SimilarQuestion(
+                    rank=1,
+                    question="rank-1 but wrong tag",
+                    tag="other_tag",
+                    cosine_similarity=0.9,
+                ),
+                SimilarQuestion(
+                    rank=2,
+                    question="rank-2, the winning tag",
+                    tag="new_voter_docs",
+                    cosine_similarity=0.85,
+                ),
+            ],
+            tag="new_voter_docs",
+            confident=True,
+            model_agreement=3,
+        ),
+    )
+    res = qa.answer(QaRequest(question="যেকোনো প্রশ্ন", min_cosine=0.0))
+    assert res.tag == "new_voter_docs"
+    assert res.matched_question == "rank-2, the winning tag"
+
+
 def test_disagreement_returns_the_fallback_not_a_guess(qa, monkeypatch):
     monkeypatch.setattr(
         EcBotService,
@@ -41,7 +78,11 @@ def test_threshold_is_overridable_per_request(qa, monkeypatch):
     monkeypatch.setattr(
         EcBotService,
         "_per_model_tags",
-        lambda self, similar: {"e5": "new_voter_docs", "qwen3": "new_voter_docs", "bge_m3": "x"},
+        lambda self, similar: {
+            "e5": "new_voter_docs",
+            "qwen3": "new_voter_docs",
+            "bge_m3": "x",
+        },
     )
     assert qa.answer(QaRequest(question="নতুন ভোটার", min_cosine=0.0)).confident is True
     strict = qa.answer(QaRequest(question="নতুন ভোটার", min_model_agreement=3))
@@ -92,17 +133,23 @@ def test_placeholder_answer_is_refused(qa):
     ec = EcBotService(qa.retrieval, AnswerStore({**ANSWERS, "stub_tag": "tag"}))
     assert ec._is_placeholder("stub_tag") is True
     assert ec._is_placeholder("account_locked") is False, "a real answer must survive"
-    assert ec._is_placeholder("no_such_tag") is True, "a tag with no entry at all is a placeholder"
+    assert (
+        ec._is_placeholder("no_such_tag") is True
+    ), "a tag with no entry at all is a placeholder"
 
 
 def test_fallback_text_reused_as_a_real_answer_is_a_placeholder(qa):
     """A tag whose answer is a verbatim copy of the disclaimer reads as a
     confident answer while saying nothing -- 16 tags in the real dataset,
     264 questions, distinct from the too-short-to-be-an-answer case."""
-    disguised = AnswerStore({**ANSWERS, "smart_card_from_where": ANSWERS["unable_to_answer"]})
+    disguised = AnswerStore(
+        {**ANSWERS, "smart_card_from_where": ANSWERS["unable_to_answer"]}
+    )
     ec = EcBotService(qa.retrieval, disguised)
     assert ec._is_placeholder("smart_card_from_where") is True
-    assert ec._is_placeholder("unable_to_answer") is False, "the fallback tag is not a placeholder of itself"
+    assert (
+        ec._is_placeholder("unable_to_answer") is False
+    ), "the fallback tag is not a placeholder of itself"
 
 
 # --- rewrite integration -------------------------------------------------
@@ -164,7 +211,10 @@ def test_rewritten_question_is_what_gets_retrieved(qa, monkeypatch):
             min_cosine=0.0,
         )
     )
-    assert seen == ["আর ফি?", "সংশোধন ফি কত টাকা"], "bare must be tried before the rewrite"
+    assert seen == [
+        "আর ফি?",
+        "সংশোধন ফি কত টাকা",
+    ], "bare must be tried before the rewrite"
     assert res.used_context is True
     assert res.tag == "fee_amount"
     # The history entry keeps what the caller actually asked, not the rewrite.
@@ -184,8 +234,11 @@ def test_rewrite_failure_falls_back_to_the_raw_question(qa, monkeypatch):
     def fake(self, req):
         seen.append(req.question)
         return TopSimilarResponse(
-            input_question=req.question, normalized_question=req.question,
-            top_similar=[], tag="unable_to_answer", confident=False,
+            input_question=req.question,
+            normalized_question=req.question,
+            top_similar=[],
+            tag="unable_to_answer",
+            confident=False,
             fallback_reason="low_similarity",
         )
 
@@ -217,8 +270,11 @@ def test_history_sent_to_the_rewriter_matches_its_schema(qa, monkeypatch):
         EcBotService,
         "top_similar",
         lambda self, req: TopSimilarResponse(
-            input_question=req.question, normalized_question=req.question,
-            top_similar=[], tag="unable_to_answer", confident=False,
+            input_question=req.question,
+            normalized_question=req.question,
+            top_similar=[],
+            tag="unable_to_answer",
+            confident=False,
             fallback_reason="low_similarity",
         ),
     )
@@ -247,13 +303,16 @@ def test_history_sent_to_the_rewriter_matches_its_schema(qa, monkeypatch):
 @pytest.fixture(autouse=True)
 def clean_sessions():
     from src.core.memory import store
+
     store._sessions.clear()
     yield
     store._sessions.clear()
 
 
 def test_chat_id_is_echoed_back(qa):
-    res = qa.answer(QaRequest(question="নতুন ভোটার হতে কি কি লাগে?", chat_id="c1", min_cosine=0.0))
+    res = qa.answer(
+        QaRequest(question="নতুন ভোটার হতে কি কি লাগে?", chat_id="c1", min_cosine=0.0)
+    )
     assert res.chat_id == "c1"
 
 
@@ -284,8 +343,11 @@ def test_chat_id_takes_priority_over_client_supplied_history(qa, monkeypatch):
         EcBotService,
         "top_similar",
         lambda self, req: TopSimilarResponse(
-            input_question=req.question, normalized_question=req.question,
-            top_similar=[], tag="unable_to_answer", confident=False,
+            input_question=req.question,
+            normalized_question=req.question,
+            top_similar=[],
+            tag="unable_to_answer",
+            confident=False,
             fallback_reason="low_similarity",
         ),
     )
@@ -304,9 +366,9 @@ def test_chat_id_takes_priority_over_client_supplied_history(qa, monkeypatch):
             min_cosine=0.0,
         )
     )
-    assert captured["history"] == [{"question": "সীড প্রশ্ন", "answer": "সীড উত্তর"}], (
-        "chat_id's own history must win over client-supplied `history`"
-    )
+    assert captured["history"] == [
+        {"question": "সীড প্রশ্ন", "answer": "সীড উত্তর"}
+    ], "chat_id's own history must win over client-supplied `history`"
 
 
 def test_no_chat_id_and_no_history_behaves_as_a_single_turn(qa):
@@ -315,7 +377,9 @@ def test_no_chat_id_and_no_history_behaves_as_a_single_turn(qa):
     assert len(res.history) == 1
 
 
-def test_bare_question_never_calls_the_rewriter_when_it_already_succeeds(qa, monkeypatch):
+def test_bare_question_never_calls_the_rewriter_when_it_already_succeeds(
+    qa, monkeypatch
+):
     """Trying bare first means a mid-conversation question that doesn't need
     rewriting skips the external call entirely -- both a latency win and
     what makes `used_context` a meaningful signal rather than 'history was
@@ -332,7 +396,9 @@ def test_bare_question_never_calls_the_rewriter_when_it_already_succeeds(qa, mon
             min_cosine=0.0,
         )
     )
-    assert not called, "the bare question already succeeded; rewriting it would be wasted work"
+    assert (
+        not called
+    ), "the bare question already succeeded; rewriting it would be wasted work"
     assert res.used_context is False
     assert res.rewritten_question is None
     assert res.confident is True

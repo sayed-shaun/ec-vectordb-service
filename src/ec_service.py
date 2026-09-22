@@ -186,6 +186,13 @@ class EcBotService:
         else:
             history = list(req.history) + [QaTurn(question=req.question, answer=full.answer)]
 
+        # The winning tag comes from aggregate evidence across several
+        # candidates (_vote_tags), not necessarily the single best-ranked
+        # one -- so top_similar[0] can belong to a different tag than the
+        # one being answered. Show the best-ranked candidate that actually
+        # backs the winning tag, or none rather than a mismatched example.
+        matched = next((sq for sq in full.top_similar if sq.tag == full.tag), None)
+
         return QaResponse(
             question=req.question,
             answer=full.answer,
@@ -195,7 +202,7 @@ class EcBotService:
             per_model_tag=full.per_model_tag,
             top_cosine=full.top_cosine,
             fallback_reason=full.fallback_reason,
-            matched_question=full.top_similar[0].question if full.top_similar else None,
+            matched_question=matched.question if matched else None,
             rewritten_question=rewritten_question,
             took_ms=full.took_ms,
             history=history,
