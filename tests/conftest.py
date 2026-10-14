@@ -9,6 +9,8 @@ from __future__ import annotations
 import hashlib
 
 import pytest
+import torch
+import torch.nn.functional as F
 from qdrant_client import QdrantClient
 
 from src.core.config import MODEL_SPECS
@@ -30,23 +32,22 @@ class FakeEmbedder:
         self.salt = salt
         self.is_loaded = True
 
-    def _vec(self, text: str) -> list[float]:
-        vec = [0.0] * self.spec.dim
-        for token in text.lower().split():
-            digest = hashlib.sha256(f"{self.salt}{token}".encode()).digest()
-            idx = int.from_bytes(digest[:4], "big") % self.spec.dim
-            vec[idx] += 1.0
-        norm = sum(v * v for v in vec) ** 0.5 or 1.0
-        return [v / norm for v in vec]
+    def _vecs(self, texts):
+        out = torch.zeros(len(texts), self.spec.dim)
+        for row, text in enumerate(texts):
+            for token in text.lower().split():
+                digest = hashlib.sha256(f"{self.salt}{token}".encode()).digest()
+                out[row, int.from_bytes(digest[:4], "big") % self.spec.dim] += 1.0
+        return F.normalize(out, dim=1)
 
     # The raw text only, not the model's instruction prefix: e5-instruct's
     # ~50-token prefix is identical on both sides, and in a bag of tokens it
     # would swamp the question and put every pair at cosine ~0.99.
     def embed_queries(self, texts):
-        return [self._vec(t) for t in texts]
+        return self._vecs(texts)
 
     def embed_passages(self, texts):
-        return [self._vec(t) for t in texts]
+        return self._vecs(texts)
 
 
 @pytest.fixture

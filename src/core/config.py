@@ -11,6 +11,7 @@ import logging
 from dataclasses import dataclass
 from typing import Literal
 
+import torch
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 log = logging.getLogger(__name__)
@@ -25,14 +26,7 @@ def resolve_device(device: str) -> str:
     if device == "cpu":
         return "cpu"
 
-    available = False
-    try:
-        import torch
-
-        available = torch.cuda.is_available()
-    except ImportError:
-        pass
-
+    available = torch.cuda.is_available()
     if device == "auto":
         return "cuda" if available else "cpu"
     if available:
@@ -65,7 +59,6 @@ class ModelSpec:
     param_count: int = 0
     query_prefix: str = ""
     passage_prefix: str = ""
-    query_prompt_name: str | None = None
     max_seq_length: int | None = None
     weight: float = 1.0
     device: str | None = None
@@ -82,7 +75,7 @@ class ModelSpec:
 
     def vram_estimate_mib(self) -> float:
         """Rough weight footprint, ignoring CUDA context and activations."""
-        bytes_per_param = 2 if self.resolved_dtype() in ("float16", "bfloat16") else 4
+        bytes_per_param = getattr(torch, self.resolved_dtype()).itemsize
         return self.param_count * bytes_per_param / 2**20
 
     def encode_query(self, text: str) -> str:

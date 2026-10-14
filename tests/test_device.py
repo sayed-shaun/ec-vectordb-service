@@ -4,6 +4,7 @@ its resolution rules are worth pinning."""
 import dataclasses
 
 import pytest
+import torch
 
 from src.core.config import MODEL_SPECS, resolve_device, settings
 
@@ -59,11 +60,7 @@ def test_spec_dtype_pins_one_model_against_the_global(cfg):
 
 def test_the_cuda_default_still_boots_without_a_gpu(monkeypatch):
     """No usable CUDA degrades to CPU rather than crashing."""
-    import sys
-    import types
-
-    no_gpu = types.SimpleNamespace(cuda=types.SimpleNamespace(is_available=lambda: False))
-    monkeypatch.setitem(sys.modules, "torch", no_gpu)
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
     assert resolve_device("cuda") == "cpu"
 
 

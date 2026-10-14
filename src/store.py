@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 import uuid
 
+import torch
 from qdrant_client import QdrantClient, models
 
 from src.core.config import MODEL_SPECS, settings
@@ -58,7 +59,7 @@ class VectorStore:
         self,
         doc_ids: list[str],
         texts: list[str],
-        vectors_by_model: dict[str, list[list[float]]],
+        vectors_by_model: dict[str, torch.Tensor],
         metadatas: list[dict] | None = None,
     ) -> int:
         metadatas = metadatas or [{} for _ in doc_ids]
@@ -68,7 +69,7 @@ class VectorStore:
             points.append(
                 models.PointStruct(
                     id=stable_point_id(doc_id),
-                    vector={name: vecs[i] for name, vecs in vectors_by_model.items()},
+                    vector={name: vecs[i].tolist() for name, vecs in vectors_by_model.items()},
                     payload=payload,
                 )
             )
@@ -77,7 +78,7 @@ class VectorStore:
 
     def search_all(
         self,
-        vectors_by_model: dict[str, list[float]],
+        vectors_by_model: dict[str, torch.Tensor],
         limit: int,
         query_filter: models.Filter | None = None,
     ) -> dict[str, list[Candidate]]:
@@ -86,7 +87,7 @@ class VectorStore:
         names = list(vectors_by_model)
         requests = [
             models.QueryRequest(
-                query=vectors_by_model[name],
+                query=vectors_by_model[name].tolist(),
                 using=name,
                 limit=limit,
                 filter=query_filter,

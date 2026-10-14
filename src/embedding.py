@@ -6,19 +6,22 @@ import logging
 import threading
 from typing import Protocol
 
+import torch
+from sentence_transformers import SentenceTransformer
+
 from src.core.config import MODEL_SPECS, ModelSpec, settings
 
 log = logging.getLogger(__name__)
 
-Vector = list[float]
+Vector = torch.Tensor
 
 
 class Embedder(Protocol):
     spec: ModelSpec
 
-    def embed_queries(self, texts: list[str]) -> list[Vector]: ...
+    def embed_queries(self, texts: list[str]) -> Vector: ...
 
-    def embed_passages(self, texts: list[str]) -> list[Vector]: ...
+    def embed_passages(self, texts: list[str]) -> Vector: ...
 
 
 class SentenceTransformerEmbedder:
@@ -38,8 +41,6 @@ class SentenceTransformerEmbedder:
             return self._model
         with self._lock:
             if self._model is None:
-                from sentence_transformers import SentenceTransformer
-
                 device = self.spec.resolved_device()
                 dtype = self.spec.resolved_dtype()
                 log.info(
@@ -49,7 +50,7 @@ class SentenceTransformerEmbedder:
                 )
                 model_kwargs = {}
                 if dtype != "float32" and device.startswith("cuda"):
-                    model_kwargs["torch_dtype"] = dtype
+                    model_kwargs["torch_dtype"] = getattr(torch, dtype)
                 model = SentenceTransformer(
                     self.spec.hf_id,
                     device=device,
@@ -66,30 +67,22 @@ class SentenceTransformerEmbedder:
     def is_loaded(self) -> bool:
         return self._model is not None
 
-    def _encode(self, texts: list[str], prompt_name: str | None = None) -> list[Vector]:
+    def _encode(self, texts: list[str]) -> Vector:
         if not texts:
-            return []
-        model = self._ensure_loaded()
-        kwargs = {}
-        if prompt_name and getattr(model, "prompts", None) and prompt_name in model.prompts:
-            kwargs["prompt_name"] = prompt_name
-        vectors = model.encode(
+            return torch.empty(0, self.spec.dim)
+        return self._ensure_loaded().encode(
             texts,
             batch_size=settings.EMBED_BATCH_SIZE,
             normalize_embeddings=self.spec.normalize,
-            convert_to_numpy=True,
+            convert_to_tensor=True,
             show_progress_bar=False,
-            **kwargs,
-        )
-        return [v.tolist() for v in vectors]
+        ).cpu()
 
-    def embed_queries(self, texts: list[str]) -> list[Vector]:
-        prepared = [self.spec.encode_query(t) for t in texts]
-        return self._encode(prepared, prompt_name=self.spec.query_prompt_name)
+    def embed_queries(self, texts: list[str]) -> Vector:
+        return self._encode([self.spec.encode_query(t) for t in texts])
 
-    def embed_passages(self, texts: list[str]) -> list[Vector]:
-        prepared = [self.spec.encode_passage(t) for t in texts]
-        return self._encode(prepared)
+    def embed_passages(self, texts: list[str]) -> Vector:
+        return self._encode([self.spec.encode_passage(t) for t in texts])
 
 
 class EmbedderRegistry:
@@ -112,7 +105,7 @@ class EmbedderRegistry:
         targets = models or self.names
         return {name: self._embedders[name].embed_queries([text])[0] for name in targets}
 
-    def embed_passages(self, texts: list[str]) -> dict[str, list[Vector]]:
+    def embed_passages(self, texts: list[str]) -> dict[str, Vector]:
         return {name: emb.embed_passages(texts) for name, emb in self._embedders.items()}
 
     def warmup(self) -> None:
