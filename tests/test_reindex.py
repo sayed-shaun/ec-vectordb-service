@@ -177,35 +177,48 @@ def answers_fetcher(mapping):
     return fetch
 
 
-def test_a_run_refreshes_the_answers_it_serves(service, dest, tmp_path):
-    from src.ec import AnswerStore
+def payloads(service):
+    records, _ = service.store.client.scroll(
+        service.store.collection, limit=100, with_payload=True, with_vectors=False
+    )
+    return [r.payload for r in records]
 
-    answers = AnswerStore({"old": "stale"})
+
+def test_a_run_stores_each_tags_answer_with_its_question(service, dest, tmp_path):
     job = Reindexer(
-        service, fetch=csv_fetcher(ROWS), dest=dest, answers=answers,
-        fetch_answers=answers_fetcher({"voter": "new answer"}), answers_dest=tmp_path / "a.json",
+        service, fetch=csv_fetcher(ROWS), dest=dest,
+        fetch_answers=answers_fetcher({"voter": "voter answer", "locked": "locked answer"}),
+        answers_dest=tmp_path / "a.json",
     )
     job.run(TOKEN)
 
     assert job.status().status == "succeeded"
-    assert answers.get("voter") == "new answer" and answers.get("old") is None
+    got = {p["tag"]: p["answer"] for p in payloads(service)}
+    assert got == {"voter": "voter answer", "locked": "locked answer"}
 
 
-def test_a_failed_answers_fetch_leaves_index_and_answers_alone(service, dest, tmp_path):
-    from src.ec import AnswerStore
+def test_a_tag_missing_from_the_answers_is_indexed_with_a_null_answer(service, dest, tmp_path):
+    job = Reindexer(
+        service, fetch=csv_fetcher(ROWS), dest=dest,
+        fetch_answers=answers_fetcher({"voter": "voter answer"}), answers_dest=tmp_path / "a.json",
+    )
+    job.run(TOKEN)
 
+    got = {p["tag"]: p["answer"] for p in payloads(service)}
+    assert got == {"voter": "voter answer", "locked": None}
+
+
+def test_a_failed_answers_fetch_leaves_the_index_alone(service, dest, tmp_path):
     service.ingest([Document(doc_id="keep", text="বিদ্যমান", metadata={"tag": "t"})])
-    answers = AnswerStore({"old": "stale"})
 
     def broken(_d, _t):
         raise RuntimeError("HTTP 404 fetching tag_answer.json")
 
     job = Reindexer(
-        service, fetch=csv_fetcher(ROWS), dest=dest, answers=answers,
-        fetch_answers=broken, answers_dest=tmp_path / "a.json",
+        service, fetch=csv_fetcher(ROWS), dest=dest, fetch_answers=broken,
+        answers_dest=tmp_path / "a.json",
     )
     job.run(TOKEN)
 
     assert job.status().status == "failed"
     assert service.store.count() == 1
-    assert answers.get("old") == "stale"

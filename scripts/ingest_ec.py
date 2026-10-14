@@ -3,8 +3,8 @@
     python scripts/ingest_ec.py [--limit N] [--batch N] [--normalizer compat]
 
 Embeds ~18k canonical questions with every configured model. Only the question text
-is embedded; the tag and the original surface form ride along in the payload
-and come back with each hit.
+is embedded; the tag, that tag's answer from tag_answer.json and the original
+surface form ride along in the payload and come back with each hit.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ sys.path.insert(0, ".")
 
 from src.core.config import MODEL_SPECS, settings  # noqa: E402
 from src.core.logger import setup_logging  # noqa: E402
-from src.ec import load_questions  # noqa: E402
+from src.ec import AnswerStore, load_questions  # noqa: E402
 from src.indexer import index_questions  # noqa: E402
 from src.service import RetrievalService  # noqa: E402
 from src.store import VectorStore  # noqa: E402
@@ -40,7 +40,12 @@ def main() -> None:
     args = ap.parse_args()
 
     questions = load_questions()
-    log.info("corpus: %d questions, %d tags", len(questions), len({q.tag for q in questions}))
+    answers = AnswerStore.load()
+    tags = {q.tag for q in questions}
+    log.info("corpus: %d questions, %d tags, %d answers", len(questions), len(tags), len(answers))
+    missing = sorted(t for t in tags if answers.get(t) is None)
+    if missing:
+        log.warning("%d tags have no answer; their hits will carry null (e.g. %s)", len(missing), missing[0])
 
     if args.limit:
         questions = questions[: args.limit]
@@ -68,7 +73,7 @@ def main() -> None:
         return
 
     started = time.perf_counter()
-    index_questions(service, questions, args.normalizer, args.batch)
+    index_questions(service, questions, args.normalizer, args.batch, answers=answers)
 
     log.info("done: %d points in %.1f min", store.count(), (time.perf_counter() - started) / 60)
 

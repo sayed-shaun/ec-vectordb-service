@@ -6,7 +6,7 @@ import logging
 import time
 from collections.abc import Callable
 
-from src.ec import QuestionRow
+from src.ec import AnswerStore, QuestionRow
 from src.normalize import normalize
 from src.schemas import Document
 from src.service import RetrievalService
@@ -20,8 +20,12 @@ def index_questions(
     normalizer: str,
     batch_size: int,
     on_progress: Callable[[int], None] | None = None,
+    answers: AnswerStore | None = None,
 ) -> int:
-    """Upsert ``questions`` in batches and return how many were written."""
+    """Upsert ``questions`` in batches and return how many were written.
+
+    Each point's payload carries its tag and that tag's answer.
+    """
     total, started = 0, time.perf_counter()
     for i in range(0, len(questions), batch_size):
         chunk = questions[i : i + batch_size]
@@ -31,6 +35,7 @@ def index_questions(
                 text=normalize(q.question, normalizer),
                 metadata={
                     "tag": q.tag,
+                    "answer": answers.get(q.tag) if answers else None,
                     "raw_question": q.question,
                     "source": "question_tag.csv",
                     "lang": "bn",

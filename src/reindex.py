@@ -31,14 +31,12 @@ class Reindexer:
         service: RetrievalService,
         fetch: Callable[[Path, str], int] = fetch_dataset,
         dest: Path = QUESTION_TAG_CSV,
-        answers: AnswerStore | None = None,
         fetch_answers: Callable[[Path, str], int] | None = None,
         answers_dest: Path = TAG_ANSWER_JSON,
     ) -> None:
         self.service = service
         self._fetch = fetch
         self._dest = dest
-        self._answers = answers
         self._fetch_answers = fetch_answers
         self._answers_dest = answers_dest
         self._lock = threading.Lock()
@@ -73,6 +71,7 @@ class Reindexer:
             self._fetch(self._dest, token)
             if self._fetch_answers:
                 self._fetch_answers(self._answers_dest, token)
+            answers = AnswerStore.load(self._answers_dest)
             questions = load_questions(self._dest)
             if not questions:
                 raise ValueError("dataset has no usable rows")
@@ -84,11 +83,8 @@ class Reindexer:
                 settings.INDEX_NORMALIZER,
                 settings.INDEX_BATCH_SIZE,
                 on_progress=lambda n: self._set(indexed=n),
+                answers=answers,
             )
-
-            if self._answers is not None and self._fetch_answers:
-                # After indexing, so answers and index move to the new corpus together.
-                self._answers.reload(self._answers_dest)
 
             self._set(phase="pruning")
             pruned = self.service.store.prune({q.qid for q in questions})

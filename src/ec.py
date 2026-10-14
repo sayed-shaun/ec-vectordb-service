@@ -1,8 +1,8 @@
 """EC FAQ corpus loader: canonical questions, their tags, and each tag's answer.
 
 ~18k questions over ~532 tags. Only the question is embedded; the tag rides
-along in the payload and the answer is looked up from tag_answer.json when a
-hit is returned.
+along in the payload together with the tag's answer from tag_answer.json, so a
+hit comes back with both and queries never read the answers file.
 """
 
 from __future__ import annotations
@@ -30,8 +30,8 @@ class QuestionRow:
 class AnswerStore:
     """Tag -> answer lookup, loaded from tag_answer.json.
 
-    ``reload`` swaps the whole mapping in one assignment, so a request in
-    flight sees either the old answers or the new ones, never a mix.
+    Used at index time: each question's payload carries its tag's answer, so
+    queries never read this file.
     """
 
     def __init__(self, answers: dict[str, str] | None = None) -> None:
@@ -39,20 +39,15 @@ class AnswerStore:
 
     @classmethod
     def load(cls, path: Path | str = TAG_ANSWER_JSON) -> "AnswerStore":
-        store = cls()
         try:
-            store.reload(path)
+            with open(path, encoding="utf-8") as fh:
+                data = json.load(fh)
         except FileNotFoundError:
-            log.warning("%s not found; hits will carry no answer until /reindex", path)
-        return store
-
-    def reload(self, path: Path | str = TAG_ANSWER_JSON) -> int:
-        with open(path, encoding="utf-8") as fh:
-            data = json.load(fh)
+            log.warning("%s not found; questions will be indexed without answers", path)
+            return cls()
         if not isinstance(data, dict):
             raise ValueError("tag_answer.json must map tag to answer")
-        self._answers = data
-        return len(data)
+        return cls(data)
 
     def get(self, tag: str) -> str | None:
         return self._answers.get(tag)
