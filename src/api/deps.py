@@ -9,9 +9,11 @@ from __future__ import annotations
 
 from fastapi import HTTPException
 
-from src.topk_service import TopKService
+from src.dataset import fetch_answers, fetch_dataset
+from src.ec import AnswerStore
 from src.reindex import Reindexer
 from src.service import RetrievalService
+from src.topk_service import TopKService
 
 _service: RetrievalService | None = None
 _topk_service: TopKService | None = None
@@ -21,8 +23,15 @@ _reindexer: Reindexer | None = None
 def set_services(retrieval: RetrievalService | None) -> None:
     global _service, _topk_service, _reindexer
     _service = retrieval
-    _topk_service = TopKService(retrieval) if retrieval is not None else None
-    _reindexer = Reindexer(retrieval) if retrieval is not None else None
+    if retrieval is None:
+        _topk_service = _reindexer = None
+        return
+    # One store shared by both, so a reindex's new answers reach live queries.
+    answers = AnswerStore.load()
+    _topk_service = TopKService(retrieval, answers)
+    _reindexer = Reindexer(
+        retrieval, fetch=fetch_dataset, answers=answers, fetch_answers=fetch_answers
+    )
 
 
 def get_service() -> RetrievalService:

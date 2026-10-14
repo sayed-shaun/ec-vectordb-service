@@ -1,4 +1,4 @@
-"""EC FAQ top-k retrieval: normalise, retrieve, shape the hits."""
+"""Top-k retrieval: normalise, retrieve, attach each hit's tag answer."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from src.api.v1.topk.schema import (
     TopSimilarRequest,
     TopSimilarResponse,
 )
+from src.ec import AnswerStore
 from src.normalize import normalize
 from src.schemas import QueryRequest
 from src.service import RetrievalService
@@ -18,8 +19,9 @@ log = logging.getLogger(__name__)
 
 
 class TopKService:
-    def __init__(self, retrieval: RetrievalService) -> None:
+    def __init__(self, retrieval: RetrievalService, answers: AnswerStore) -> None:
         self.retrieval = retrieval
+        self.answers = answers
 
     def top_similar(self, req: TopSimilarRequest) -> TopSimilarResponse:
         started = time.perf_counter()
@@ -39,11 +41,13 @@ class TopKService:
         similar = []
         for rank, hit in enumerate(inner.hits, 1):
             cosines = [v.score for v in hit.per_model.values()]
+            tag = hit.metadata.get("tag", "")
             similar.append(
                 SimilarQuestion(
                     rank=rank,
                     question=hit.text or "",
-                    tag=hit.metadata.get("tag", ""),
+                    tag=tag,
+                    answer=self.answers.get(tag),
                     cosine_similarity=round(sum(cosines) / len(cosines), 6) if cosines else 0.0,
                     votes=hit.votes,
                     per_model=dict(hit.per_model),

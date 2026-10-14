@@ -165,3 +165,47 @@ def test_a_rejected_token_is_reported_without_echoing_it(tmp_path, monkeypatch):
     with pytest.raises(RuntimeError, match="rejected") as exc:
         fetch_dataset(tmp_path / "question_tag.csv", "ghp_secret")
     assert "ghp_secret" not in str(exc.value)
+
+
+def answers_fetcher(mapping):
+    def fetch(dest, token):
+        import json
+
+        dest.write_text(json.dumps(mapping, ensure_ascii=False), encoding="utf-8")
+        return len(mapping)
+
+    return fetch
+
+
+def test_a_run_refreshes_the_answers_it_serves(service, dest, tmp_path):
+    from src.ec import AnswerStore
+
+    answers = AnswerStore({"old": "stale"})
+    job = Reindexer(
+        service, fetch=csv_fetcher(ROWS), dest=dest, answers=answers,
+        fetch_answers=answers_fetcher({"voter": "new answer"}), answers_dest=tmp_path / "a.json",
+    )
+    job.run(TOKEN)
+
+    assert job.status().status == "succeeded"
+    assert answers.get("voter") == "new answer" and answers.get("old") is None
+
+
+def test_a_failed_answers_fetch_leaves_index_and_answers_alone(service, dest, tmp_path):
+    from src.ec import AnswerStore
+
+    service.ingest([Document(doc_id="keep", text="বিদ্যমান", metadata={"tag": "t"})])
+    answers = AnswerStore({"old": "stale"})
+
+    def broken(_d, _t):
+        raise RuntimeError("HTTP 404 fetching tag_answer.json")
+
+    job = Reindexer(
+        service, fetch=csv_fetcher(ROWS), dest=dest, answers=answers,
+        fetch_answers=broken, answers_dest=tmp_path / "a.json",
+    )
+    job.run(TOKEN)
+
+    assert job.status().status == "failed"
+    assert service.store.count() == 1
+    assert answers.get("old") == "stale"

@@ -5,7 +5,7 @@ import pytest
 
 from src.api.v1.topk.schema import TopSimilarRequest
 from src.core.config import MODEL_SPECS
-from src.ec import load_questions
+from src.ec import AnswerStore, load_questions
 from src.topk_service import TopKService
 from src.schemas import Document
 
@@ -18,13 +18,19 @@ CORPUS = [
     ("q6", "সংশোধন ফি কত টাকা", "fee_amount"),
 ]
 
+ANSWERS = {
+    "new_voter_docs": "জন্ম সনদ ও পিতামাতার এনআইডি প্রয়োজন।",
+    "account_locked": "আট ঘন্টা পর সঠিক তথ্য দিয়ে চেষ্টা করুন।",
+    "fee_amount": "সংশোধন ফি ২৩০ টাকা।",
+}
+
 
 @pytest.fixture
 def ec(service):
     service.ingest(
         [Document(doc_id=q, text=t, metadata={"tag": tag, "lang": "bn"}) for q, t, tag in CORPUS]
     )
-    return TopKService(service)
+    return TopKService(service, AnswerStore(ANSWERS))
 
 
 def test_response_matches_reference_contract(ec):
@@ -62,11 +68,28 @@ def test_each_hit_carries_its_tag(ec):
     assert res.top_similar[0].tag == "new_voter_docs"
 
 
-def test_response_has_no_answer_or_gate_fields(ec):
+def test_each_hit_carries_its_tags_answer(ec):
+    res = ec.top_similar(TopSimilarRequest(question="নতুন ভোটার হতে কি কি লাগে", top_k=6))
+    assert res.top_similar
+    for hit in res.top_similar:
+        assert hit.answer == ANSWERS[hit.tag]
+
+
+def test_a_tag_without_an_answer_gives_a_null_answer(service):
+    service.ingest([Document(doc_id="x", text="নতুন প্রশ্ন", metadata={"tag": "orphan"})])
+    res = TopKService(service, AnswerStore(ANSWERS)).top_similar(
+        TopSimilarRequest(question="নতুন প্রশ্ন", top_k=1)
+    )
+    assert res.top_similar[0].tag == "orphan"
+    assert res.top_similar[0].answer is None
+
+
+def test_answers_are_not_voted_on_or_gated(ec):
+    """Answers ride on each hit; there is no winner, floor or fallback."""
     body = json.loads(
         ec.top_similar(TopSimilarRequest(question="সংশোধন ফি", top_k=3)).model_dump_json()
     )
-    assert not {"answer", "tag_votes", "confident", "fallback_reason"} & set(body)
+    assert not {"answer", "tag", "tag_votes", "confident", "fallback_reason"} & set(body)
 
 
 def test_normalizer_choice_is_reflected(ec):
@@ -93,3 +116,19 @@ def test_real_dataset_loads_every_row_with_a_tag():
     rows = load_questions()
     assert rows
     assert all(r.question and r.tag for r in rows)
+
+
+def test_answer_store_reload_swaps_the_mapping(tmp_path):
+    path = tmp_path / "tag_answer.json"
+    path.write_text('{"a": "one"}', encoding="utf-8")
+    store = AnswerStore.load(path)
+    assert store.get("a") == "one"
+
+    path.write_text('{"b": "two"}', encoding="utf-8")
+    assert store.reload(path) == 1
+    assert store.get("a") is None and store.get("b") == "two"
+
+
+def test_a_missing_answer_file_loads_empty(tmp_path):
+    store = AnswerStore.load(tmp_path / "absent.json")
+    assert len(store) == 0 and store.get("a") is None

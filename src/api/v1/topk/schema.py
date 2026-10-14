@@ -37,6 +37,9 @@ class SimilarQuestion(BaseModel):
     rank: int
     question: str
     tag: str
+    answer: str | None = Field(
+        None, description="The tag's answer from tag_answer.json; null if the tag has none."
+    )
     cosine_similarity: float
     votes: int = 0
     per_model: dict[str, ModelVote] = Field(default_factory=dict)

@@ -151,6 +151,7 @@ class Settings(BaseSettings):
     DATASET_REPO: str = "Synesis-IT-PLC/ec-faq-bot"
     DATASET_REF: str = "development"
     DATASET_PATH: str = "full_dataset/question_tag.csv"
+    DATASET_ANSWERS_PATH: str = "full_dataset/tag_answer.json"
     DATASET_TIMEOUT_S: float = 60.0
     # Rows per upsert, and per page when pruning stale points.
     INDEX_BATCH_SIZE: int = 256

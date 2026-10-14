@@ -4,7 +4,7 @@
 set -euo pipefail
 REPO="Synesis-IT-PLC/ec-faq-bot"; REF="development"
 mkdir -p data
-for f in question_tag.csv; do
+for f in question_tag.csv tag_answer.json; do
   if [ -n "${GITHUB_TOKEN:-}" ]; then
     curl -fsSL -H "Authorization: Bearer $GITHUB_TOKEN" \
       -H "Accept: application/vnd.github.raw" \
