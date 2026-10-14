@@ -13,15 +13,13 @@ from src.core.config import MODEL_SPECS, ModelSpec, settings
 
 log = logging.getLogger(__name__)
 
-Vector = torch.Tensor
-
 
 class Embedder(Protocol):
     spec: ModelSpec
 
-    def embed_queries(self, texts: list[str]) -> Vector: ...
+    def embed_queries(self, texts: list[str]) -> torch.Tensor: ...
 
-    def embed_passages(self, texts: list[str]) -> Vector: ...
+    def embed_passages(self, texts: list[str]) -> torch.Tensor: ...
 
 
 class SentenceTransformerEmbedder:
@@ -67,7 +65,7 @@ class SentenceTransformerEmbedder:
     def is_loaded(self) -> bool:
         return self._model is not None
 
-    def _encode(self, texts: list[str]) -> Vector:
+    def _encode(self, texts: list[str]) -> torch.Tensor:
         if not texts:
             return torch.empty(0, self.spec.dim)
         return self._ensure_loaded().encode(
@@ -78,10 +76,10 @@ class SentenceTransformerEmbedder:
             show_progress_bar=False,
         ).cpu()
 
-    def embed_queries(self, texts: list[str]) -> Vector:
+    def embed_queries(self, texts: list[str]) -> torch.Tensor:
         return self._encode([self.spec.encode_query(t) for t in texts])
 
-    def embed_passages(self, texts: list[str]) -> Vector:
+    def embed_passages(self, texts: list[str]) -> torch.Tensor:
         return self._encode([self.spec.encode_passage(t) for t in texts])
 
 
@@ -101,11 +99,11 @@ class EmbedderRegistry:
         """Swap in an alternative backend for one model slot."""
         self._embedders[embedder.spec.name] = embedder
 
-    def embed_queries(self, text: str, models: list[str] | None = None) -> dict[str, Vector]:
+    def embed_queries(self, text: str, models: list[str] | None = None) -> dict[str, torch.Tensor]:
         targets = models or self.names
         return {name: self._embedders[name].embed_queries([text])[0] for name in targets}
 
-    def embed_passages(self, texts: list[str]) -> dict[str, Vector]:
+    def embed_passages(self, texts: list[str]) -> dict[str, torch.Tensor]:
         return {name: emb.embed_passages(texts) for name, emb in self._embedders.items()}
 
     def warmup(self) -> None:
