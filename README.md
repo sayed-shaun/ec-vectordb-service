@@ -126,10 +126,13 @@ tests/
 ## Run it
 
 ```
-docker compose up -d                                                   # CPU
-docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d   # GPU
-docker compose exec api python scripts/ingest_ec.py                    # index
+docker compose up -d
+docker compose exec api python scripts/ingest_ec.py   # index
 ```
+
+The one `docker-compose.yml` runs on the GPU by default and needs the NVIDIA
+container runtime. To run on the CPU instead, set `DEVICE=cpu` in `.env` and
+delete the `deploy:` block in `docker-compose.yml`.
 
 Local: `uvicorn main:app --reload` with Qdrant at `QDRANT_URL`, then
 `python scripts/ingest_ec.py` (`--recreate` to rebuild, `--resume` to continue
@@ -145,13 +148,14 @@ them. The model runs fp16 on GPU; a CPU-resident model stays fp32 whatever
 Every setting has a default in `src/core/config.py` and is overridable by an
 env var of the same name (no prefix, from the environment or `.env`).
 No `.env` is needed: with nothing set it talks to Qdrant at
-`http://localhost:6333` and picks the GPU if one is visible, else the CPU.
+`http://localhost:6333` and uses the GPU, degrading to the CPU with a warning if
+none is usable. Set `DEVICE=cpu` to run on the CPU deliberately.
 `.env.example` lists the two you are most likely to override:
 
 | var | default | |
 |---|---|---|
 | `QDRANT_URL` | `http://localhost:6333` | (`http://qdrant:6333` under Compose) |
-| `DEVICE` | `auto` | `auto`, `cpu` or `cuda` |
+| `DEVICE` | `cuda` | `cuda`, `cpu` or `auto` |
 
 Others worth knowing: `COLLECTION`, `DTYPE`, `DEVICE_OVERRIDES`,
 `CANDIDATE_MULTIPLIER`, `RRF_K`, `EMBED_BATCH_SIZE`, `EAGER_LOAD_MODELS`,

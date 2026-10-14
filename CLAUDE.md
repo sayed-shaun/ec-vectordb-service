@@ -49,8 +49,7 @@ you fixed, not the input that reported it.
 ## Running
 
 ```
-docker compose up -d                                                   # CPU
-docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d   # GPU
+docker compose up -d   # needs the NVIDIA container runtime; see docker-compose.yml for CPU
 ```
 
 Local: `uvicorn main:app --reload` with Qdrant at `QDRANT_URL`. Run

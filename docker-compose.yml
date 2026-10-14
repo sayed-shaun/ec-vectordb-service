@@ -8,8 +8,6 @@ services:
     volumes:
       - qdrant_storage:/qdrant/storage
     healthcheck:
-      # The image is distroless-ish; /proc/net/tcp is the dependency-free way
-      # to assert the port is bound. 18BD is 6333 in hex.
       test: ["CMD-SHELL", "grep -q ':18BD' /proc/net/tcp || exit 1"]
       interval: 10s
       timeout: 5s
@@ -25,17 +23,20 @@ services:
         condition: service_healthy
     environment:
       QDRANT_URL: http://qdrant:6333
-      # auto: GPU when the container can see one, CPU otherwise. The GPU
-      # overlay (docker compose -f docker-compose.yml -f docker-compose.gpu.yml
-      # up -d) is what grants the container the card.
-      DEVICE: ${DEVICE:-auto}
+      DEVICE: ${DEVICE:-cuda}
+      EMBED_BATCH_SIZE: ${EMBED_BATCH_SIZE:-64}
       EAGER_LOAD_MODELS: "true"
       LOG_FILE: /srv/logs/ec-vectordb.log
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     volumes:
-      - models:/models          # HF weight cache, survives rebuilds
-      - ./data:/srv/data        # question_tag.csv; /reindex rewrites it
-      # Bind-mounted so the log outlives the container. It is capped at 10 MiB
-      # by the handler, so this cannot grow unbounded on the host either.
+      - models:/models
+      - ./data:/srv/data
       - ./logs:/srv/logs
 
 volumes:
