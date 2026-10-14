@@ -104,12 +104,12 @@ def test_post_while_running_is_a_409(api):
     assert client.post("/reindex").status_code == 409
 
 
-def test_token_is_required_when_configured(api, monkeypatch):
+def test_token_guards_the_trigger_but_not_the_status(api, monkeypatch):
     client, _ = api
     monkeypatch.setattr(settings, "REINDEX_TOKEN", "s3cret")
     assert client.post("/reindex").status_code == 401
     assert client.post("/reindex", headers={"X-Reindex-Token": "nope"}).status_code == 401
-    assert client.get("/reindex").status_code == 401
+    assert client.get("/reindex").status_code == 200
     ok = client.post("/reindex", headers={"X-Reindex-Token": "s3cret"})
     assert ok.status_code == 202
 
@@ -134,3 +134,20 @@ def test_fetch_keeps_the_previous_copy_when_the_download_is_unusable(tmp_path, m
     with pytest.raises(ValueError):
         fetch_dataset(dest)
     assert [r.question for r in load_questions(dest)] == ["قديم"]
+
+
+@pytest.mark.parametrize("token,expected", [(None, "not set"), ("bad", "rejected")])
+def test_an_auth_failure_says_whether_a_token_was_sent(tmp_path, monkeypatch, token, expected):
+    import io
+    import urllib.error
+    import urllib.request
+
+    from src.dataset import fetch_dataset
+
+    def deny(*a, **k):
+        raise urllib.error.HTTPError("u", 401, "Unauthorized", {}, io.BytesIO())
+
+    monkeypatch.setattr(urllib.request, "urlopen", deny)
+    monkeypatch.setattr(settings, "GITHUB_TOKEN", token)
+    with pytest.raises(RuntimeError, match=expected):
+        fetch_dataset(tmp_path / "question_tag.csv")

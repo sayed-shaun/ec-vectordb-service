@@ -18,12 +18,14 @@ def require_token(x_reindex_token: str | None = Header(None)) -> None:
         raise HTTPException(status_code=401, detail="invalid or missing X-Reindex-Token")
 
 
-router = APIRouter(
-    prefix="/reindex", tags=["reindex"], dependencies=[Depends(require_token)]
+router = APIRouter(prefix="/reindex", tags=["reindex"])
+
+
+# Only the trigger is guarded: starting a job costs a download and a full
+# re-embed, while the status read exposes nothing sensitive.
+@router.post(
+    "", response_model=ReindexStatus, status_code=202, dependencies=[Depends(require_token)]
 )
-
-
-@router.post("", response_model=ReindexStatus, status_code=202)
 def start_reindex(
     background: BackgroundTasks, job: Reindexer = Depends(get_reindexer)
 ) -> ReindexStatus:

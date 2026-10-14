@@ -74,7 +74,7 @@ already running.
 - The job lives in this process's memory: one worker, and status is lost on
   restart.
 - There is no authentication. Set `REINDEX_TOKEN` and send it as
-  `X-Reindex-Token`, or keep the service behind a gateway; left unset, anyone
+  `X-Reindex-Token` (only `POST` needs it; `GET /reindex` stays open), or keep the service behind a gateway; left unset, anyone
   who can reach it can trigger a re-embed of the whole corpus.
 
 ### `GET /health`
