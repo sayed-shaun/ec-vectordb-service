@@ -29,7 +29,7 @@ class Reindexer:
     def __init__(
         self,
         service: RetrievalService,
-        fetch: Callable[[Path], int] = fetch_dataset,
+        fetch: Callable[[Path, str], int] = fetch_dataset,
         dest: Path = QUESTION_TAG_CSV,
     ) -> None:
         self.service = service
@@ -56,11 +56,15 @@ class Reindexer:
         with self._lock:
             self._state = self._state.model_copy(update=fields)
 
-    def run(self) -> None:
-        """The job body. Never raises: a failure lands in the status."""
+    def run(self, token: str) -> None:
+        """The job body. Never raises: a failure lands in the status.
+
+        ``token`` is the caller's GitHub token, used for the download and then
+        dropped; it is not kept on the instance or reported in the status.
+        """
         try:
             self._set(phase="fetching")
-            self._fetch(self._dest)
+            self._fetch(self._dest, token)
             questions = load_questions(self._dest)
             if not questions:
                 raise ValueError("dataset has no usable rows")

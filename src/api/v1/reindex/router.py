@@ -2,37 +2,39 @@
 
 from __future__ import annotations
 
-import hmac
-
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException
 
 from src.api.deps import get_reindexer
 from src.api.v1.reindex.schema import ReindexStatus
-from src.core.config import settings
 from src.reindex import Reindexer
 
 
-def require_token(x_reindex_token: str | None = Header(None)) -> None:
-    expected = settings.REINDEX_TOKEN
-    if expected and not hmac.compare_digest(x_reindex_token or "", expected):
-        raise HTTPException(status_code=401, detail="invalid or missing X-Reindex-Token")
+def github_token(x_github_token: str | None = Header(None)) -> str:
+    """The caller's GitHub token, used once for the download.
+
+    A header, not the body or query string, which proxies and access logs
+    record. The token is the credential: a caller without read access to the
+    dataset repo gets a 401 from GitHub and nothing is indexed.
+    """
+    token = (x_github_token or "").strip()
+    if not token:
+        raise HTTPException(status_code=401, detail="X-GitHub-Token header is required")
+    return token
 
 
 router = APIRouter(prefix="/reindex", tags=["reindex"])
 
 
-# Only the trigger is guarded: starting a job costs a download and a full
-# re-embed, while the status read exposes nothing sensitive.
-@router.post(
-    "", response_model=ReindexStatus, status_code=202, dependencies=[Depends(require_token)]
-)
+@router.post("", response_model=ReindexStatus, status_code=202)
 def start_reindex(
-    background: BackgroundTasks, job: Reindexer = Depends(get_reindexer)
+    background: BackgroundTasks,
+    token: str = Depends(github_token),
+    job: Reindexer = Depends(get_reindexer),
 ) -> ReindexStatus:
-    """Fetch the corpus from GitHub and re-index it in the background."""
+    """Fetch the corpus from GitHub with the caller's token and re-index it."""
     if not job.begin():
         raise HTTPException(status_code=409, detail="a reindex is already running")
-    background.add_task(job.run)
+    background.add_task(job.run, token)
     return job.status()
 
 

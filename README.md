@@ -11,7 +11,7 @@ so existing callers must update the URL.
 
 ## Corpus
 
-`data/question_tag.csv` — 17,995 canonical questions over 532 tags. Only the
+`data/question_tag.csv` — 18,020 canonical questions over 532 tags. Only the
 question text is embedded; the tag and the original surface form ride along in
 the payload and come back with each hit. `data/` is fetched from a private
 repo by `scripts/fetch_dataset.sh` and is not committed.
@@ -61,9 +61,19 @@ Response:
 ### `POST /reindex`
 
 Downloads `question_tag.csv` from the private GitHub repo (`DATASET_REPO`,
-`DATASET_REF`, `DATASET_PATH`, using `GITHUB_TOKEN`), then embeds and upserts it
-in the background. Returns `202` with the job status, or `409` if one is
-already running.
+`DATASET_REF`, `DATASET_PATH`) with the **caller's** GitHub token, then embeds
+and upserts it in the background. Returns `202` with the job status, `401` if
+the `X-GitHub-Token` header is missing, or `409` if a job is already running.
+
+```
+curl -X POST http://localhost:8000/reindex -H "X-GitHub-Token: <token>"
+```
+
+The token needs read access to the dataset repo (fine-grained: Contents,
+read-only). It is used for the download and dropped: nothing stores it, and it
+is not in the status or the logs. A token GitHub rejects fails the job in the
+fetch step with nothing indexed, so the token is the only credential the
+endpoint needs.
 
 - The download replaces `data/question_tag.csv` only if it parses to at least
   one row, so a failed fetch keeps the previous copy and the index untouched.
@@ -73,9 +83,8 @@ already running.
   `phase`, `indexed`/`total`, `pruned` and `error`.
 - The job lives in this process's memory: one worker, and status is lost on
   restart.
-- There is no authentication. Set `REINDEX_TOKEN` and send it as
-  `X-Reindex-Token` (only `POST` needs it; `GET /reindex` stays open), or keep the service behind a gateway; left unset, anyone
-  who can reach it can trigger a re-embed of the whole corpus.
+- The token travels in a header over plain HTTP, so use TLS or a trusted
+  network between the caller and the service.
 
 ### `GET /health`
 
@@ -137,8 +146,6 @@ env var of the same name (no prefix, from the environment or `.env`).
 | `QDRANT_URL` | `http://localhost:6333` | |
 | `DEVICE` | `cpu` | `cpu`, `cuda` or `auto` |
 
-For `/reindex`: `GITHUB_TOKEN` (repo read) and optionally `REINDEX_TOKEN`.
-
 Others worth knowing: `COLLECTION`, `DTYPE`, `DEVICE_OVERRIDES`,
 `CANDIDATE_MULTIPLIER`, `RRF_K`, `EMBED_BATCH_SIZE`, `EAGER_LOAD_MODELS`,
 `LOG_LEVEL`, `LOG_FILE`.
@@ -163,4 +170,4 @@ downloads and no running Qdrant.
 - **torch must be ≥ 2.6.** transformers refuses to `torch.load` pickle
   checkpoints on older torch (CVE-2025-32434); the floor stays even though e5
   ships safetensors.
-- **No authentication**, except the optional `REINDEX_TOKEN` on `/reindex`. Keep the service behind your own gateway.
+- **No authentication** on the service itself; `/reindex` is gated only by a valid GitHub token. Keep it behind your own gateway.

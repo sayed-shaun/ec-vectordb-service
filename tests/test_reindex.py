@@ -3,7 +3,6 @@ from fastapi.testclient import TestClient
 
 from main import app
 from src.api.deps import get_reindexer, get_service
-from src.core.config import settings
 from src.ec import load_questions
 from src.reindex import Reindexer
 from src.schemas import Document
@@ -12,7 +11,7 @@ from src.schemas import Document
 def csv_fetcher(rows):
     """A fetch stand-in that writes ``rows`` the way the real one would."""
 
-    def fetch(dest):
+    def fetch(dest, token):
         dest.write_text(
             "question,tag\n" + "".join(f"{q},{t}\n" for q, t in rows), encoding="utf-8-sig"
         )
@@ -20,6 +19,9 @@ def csv_fetcher(rows):
 
     return fetch
 
+
+TOKEN = "ghp_test"
+AUTH = {"X-GitHub-Token": TOKEN}
 
 ROWS = [("নতুন ভোটার হতে কি লাগে", "voter"), ("একাউন্ট লক হয়েছে", "locked")]
 
@@ -31,7 +33,7 @@ def dest(tmp_path):
 
 def test_a_run_indexes_every_fetched_row(service, dest):
     job = Reindexer(service, fetch=csv_fetcher(ROWS), dest=dest)
-    job.run()
+    job.run(TOKEN)
 
     status = job.status()
     assert status.status == "succeeded"
@@ -42,7 +44,7 @@ def test_a_run_indexes_every_fetched_row(service, dest):
 def test_stale_points_are_pruned_after_indexing(service, dest):
     service.ingest([Document(doc_id="q999999", text="পুরনো প্রশ্ন", metadata={"tag": "old"})])
     job = Reindexer(service, fetch=csv_fetcher(ROWS), dest=dest)
-    job.run()
+    job.run(TOKEN)
 
     assert job.status().pruned == 1
     assert service.store.count() == len(ROWS)
@@ -51,11 +53,11 @@ def test_stale_points_are_pruned_after_indexing(service, dest):
 def test_a_failed_fetch_leaves_the_index_untouched(service, dest):
     service.ingest([Document(doc_id="keep", text="বিদ্যমান", metadata={"tag": "t"})])
 
-    def broken(_dest):
+    def broken(_dest, _token):
         raise RuntimeError("HTTP Error 401: Unauthorized")
 
     job = Reindexer(service, fetch=broken, dest=dest)
-    job.run()
+    job.run(TOKEN)
 
     status = job.status()
     assert status.status == "failed"
@@ -66,7 +68,7 @@ def test_a_failed_fetch_leaves_the_index_untouched(service, dest):
 def test_an_empty_dataset_never_wipes_the_index(service, dest):
     service.ingest([Document(doc_id="keep", text="বিদ্যমান", metadata={"tag": "t"})])
     job = Reindexer(service, fetch=csv_fetcher([]), dest=dest)
-    job.run()
+    job.run(TOKEN)
 
     assert job.status().status == "failed"
     assert service.store.count() == 1
@@ -90,7 +92,7 @@ def api(service, dest):
 
 def test_post_returns_202_and_get_reports_progress(api):
     client, _ = api
-    res = client.post("/reindex")
+    res = client.post("/reindex", headers=AUTH)
     assert res.status_code == 202
     assert res.json()["status"] == "running"
     body = client.get("/reindex").json()
@@ -101,17 +103,30 @@ def test_post_returns_202_and_get_reports_progress(api):
 def test_post_while_running_is_a_409(api):
     client, job = api
     job.begin()
-    assert client.post("/reindex").status_code == 409
+    assert client.post("/reindex", headers=AUTH).status_code == 409
 
 
-def test_token_guards_the_trigger_but_not_the_status(api, monkeypatch):
-    client, _ = api
-    monkeypatch.setattr(settings, "REINDEX_TOKEN", "s3cret")
+def test_the_trigger_needs_a_github_token_but_the_status_does_not(api):
+    client, job = api
     assert client.post("/reindex").status_code == 401
-    assert client.post("/reindex", headers={"X-Reindex-Token": "nope"}).status_code == 401
+    assert client.post("/reindex", headers={"X-GitHub-Token": "  "}).status_code == 401
+    assert job.status().status == "idle"
     assert client.get("/reindex").status_code == 200
-    ok = client.post("/reindex", headers={"X-Reindex-Token": "s3cret"})
-    assert ok.status_code == 202
+
+
+def test_the_callers_token_reaches_the_download_and_is_not_kept(service, dest):
+    seen = []
+
+    def fetch(d, token):
+        seen.append(token)
+        return csv_fetcher(ROWS)(d, token)
+
+    job = Reindexer(service, fetch=fetch, dest=dest)
+    job.run(TOKEN)
+
+    assert seen == [TOKEN]
+    assert TOKEN not in job.status().model_dump_json()
+    assert TOKEN not in str(vars(job))
 
 
 def test_fetch_keeps_the_previous_copy_when_the_download_is_unusable(tmp_path, monkeypatch):
@@ -132,12 +147,11 @@ def test_fetch_keeps_the_previous_copy_when_the_download_is_unusable(tmp_path, m
 
     monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **k: Resp(b"question,tag\n"))
     with pytest.raises(ValueError):
-        fetch_dataset(dest)
+        fetch_dataset(dest, TOKEN)
     assert [r.question for r in load_questions(dest)] == ["قديم"]
 
 
-@pytest.mark.parametrize("token,expected", [(None, "not set"), ("bad", "rejected")])
-def test_an_auth_failure_says_whether_a_token_was_sent(tmp_path, monkeypatch, token, expected):
+def test_a_rejected_token_is_reported_without_echoing_it(tmp_path, monkeypatch):
     import io
     import urllib.error
     import urllib.request
@@ -148,6 +162,6 @@ def test_an_auth_failure_says_whether_a_token_was_sent(tmp_path, monkeypatch, to
         raise urllib.error.HTTPError("u", 401, "Unauthorized", {}, io.BytesIO())
 
     monkeypatch.setattr(urllib.request, "urlopen", deny)
-    monkeypatch.setattr(settings, "GITHUB_TOKEN", token)
-    with pytest.raises(RuntimeError, match=expected):
-        fetch_dataset(tmp_path / "question_tag.csv")
+    with pytest.raises(RuntimeError, match="rejected") as exc:
+        fetch_dataset(tmp_path / "question_tag.csv", "ghp_secret")
+    assert "ghp_secret" not in str(exc.value)

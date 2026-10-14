@@ -145,10 +145,9 @@ class Settings(BaseSettings):
 
     EMBED_BATCH_SIZE: int = 16
 
-    # POST /reindex pulls the corpus from this private GitHub repo, then
-    # re-embeds it. The token is the same GITHUB_TOKEN scripts/fetch_dataset.sh
-    # reads; scope required: repo (read).
-    GITHUB_TOKEN: str | None = None
+    # POST /reindex pulls the corpus from this private GitHub repo. The caller
+    # supplies the GitHub token with each request (X-GitHub-Token); none is
+    # stored here.
     DATASET_REPO: str = "Synesis-IT-PLC/ec-faq-bot"
     DATASET_REF: str = "development"
     DATASET_PATH: str = "full_dataset/question_tag.csv"
@@ -158,10 +157,6 @@ class Settings(BaseSettings):
     # Must match the normaliser queries use, or the index and the questions
     # sit in different spaces.
     INDEX_NORMALIZER: Literal["compat", "safe", "none"] = "compat"
-    # The service has no authentication, and /reindex is a heavy write. When
-    # set, callers must send it as X-Reindex-Token; unset leaves it open.
-    REINDEX_TOKEN: str | None = None
-
     EAGER_LOAD_MODELS: bool = False
     MODEL_CACHE_DIR: str | None = None
 

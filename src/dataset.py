@@ -14,8 +14,8 @@ from src.ec import load_questions
 log = logging.getLogger(__name__)
 
 
-def fetch_dataset(dest: Path) -> int:
-    """Download the corpus to ``dest`` and return its row count.
+def fetch_dataset(dest: Path, token: str) -> int:
+    """Download the corpus to ``dest`` with ``token`` and return its row count.
 
     The download lands in a temp file and replaces ``dest`` only once it
     parses to at least one row, so a failed or truncated fetch never leaves
@@ -25,14 +25,14 @@ def fetch_dataset(dest: Path) -> int:
         f"https://api.github.com/repos/{settings.DATASET_REPO}/contents/"
         f"{settings.DATASET_PATH}?ref={settings.DATASET_REF}"
     )
-    headers = {"Accept": "application/vnd.github.raw"}
-    if settings.GITHUB_TOKEN:
-        headers["Authorization"] = f"Bearer {settings.GITHUB_TOKEN}"
+    headers = {
+        "Accept": "application/vnd.github.raw",
+        "Authorization": f"Bearer {token}",
+    }
 
     log.info(
-        "fetching %s@%s:%s (%s)",
+        "fetching %s@%s:%s",
         settings.DATASET_REPO, settings.DATASET_REF, settings.DATASET_PATH,
-        "with GITHUB_TOKEN" if settings.GITHUB_TOKEN else "no GITHUB_TOKEN set",
     )
     req = urllib.request.Request(url, headers=headers)
     dest.parent.mkdir(parents=True, exist_ok=True)
@@ -44,13 +44,11 @@ def fetch_dataset(dest: Path) -> int:
         except urllib.error.HTTPError as exc:
             if exc.code in (401, 403, 404):
                 # GitHub answers 404 as well as 401 to a caller it will not
-                # show a private repo to, so name the likely causes.
-                why = (
-                    "GITHUB_TOKEN is not set"
-                    if not settings.GITHUB_TOKEN
-                    else "GITHUB_TOKEN was rejected or cannot read the repo (scope, SSO, expiry)"
-                )
-                raise RuntimeError(f"HTTP {exc.code} fetching the dataset: {why}") from exc
+                # show a private repo to. The token is never echoed back.
+                raise RuntimeError(
+                    f"HTTP {exc.code} fetching the dataset: the X-GitHub-Token was "
+                    "rejected or cannot read the repo (scope, SSO, expiry)"
+                ) from exc
             raise
         rows = len(load_questions(tmp))
         if not rows:
