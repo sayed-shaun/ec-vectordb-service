@@ -3,10 +3,10 @@ from pathlib import Path
 
 import pytest
 
-from src.api.v1.ec_bot.schema import TopSimilarRequest
+from src.api.v1.topk.schema import TopSimilarRequest
 from src.core.config import MODEL_SPECS
 from src.ec import load_questions
-from src.ec_service import EcBotService
+from src.topk_service import TopKService
 from src.schemas import Document
 
 CORPUS = [
@@ -24,7 +24,7 @@ def ec(service):
     service.ingest(
         [Document(doc_id=q, text=t, metadata={"tag": tag, "lang": "bn"}) for q, t, tag in CORPUS]
     )
-    return EcBotService(service)
+    return TopKService(service)
 
 
 def test_response_matches_reference_contract(ec):

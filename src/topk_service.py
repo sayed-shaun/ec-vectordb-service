@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import time
 
-from src.api.v1.ec_bot.schema import (
+from src.api.v1.topk.schema import (
     SimilarQuestion,
     TopSimilarRequest,
     TopSimilarResponse,
@@ -17,7 +17,7 @@ from src.service import RetrievalService
 log = logging.getLogger(__name__)
 
 
-class EcBotService:
+class TopKService:
     def __init__(self, retrieval: RetrievalService) -> None:
         self.retrieval = retrieval
 

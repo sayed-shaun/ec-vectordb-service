@@ -1,23 +1,19 @@
-"""EC FAQ top-k endpoint.
-
-The path is deliberately unversioned and unprefixed: it has to match the
-existing service at `:8002` byte for byte. See src/api/v1/__init__.py.
-"""
+"""Top-k retrieval endpoint."""
 
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from src.api.deps import get_ec_service
-from src.api.v1.ec_bot.schema import TopSimilarRequest, TopSimilarResponse
-from src.ec_service import EcBotService
+from src.api.deps import get_topk_service
+from src.api.v1.topk.schema import TopSimilarRequest, TopSimilarResponse
+from src.topk_service import TopKService
 
-router = APIRouter(prefix="/ec_bot", tags=["ec_bot"])
+router = APIRouter(prefix="/topk", tags=["topk"])
 
 
 @router.post("/top_similar/", response_model=TopSimilarResponse)
 def top_similar(
-    req: TopSimilarRequest, ec: EcBotService = Depends(get_ec_service)
+    req: TopSimilarRequest, ec: TopKService = Depends(get_topk_service)
 ) -> TopSimilarResponse:
     """Top-K similar canonical questions, each with its tag and cosine."""
     try:

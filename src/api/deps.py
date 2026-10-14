@@ -9,17 +9,20 @@ from __future__ import annotations
 
 from fastapi import HTTPException
 
-from src.ec_service import EcBotService
+from src.topk_service import TopKService
+from src.reindex import Reindexer
 from src.service import RetrievalService
 
 _service: RetrievalService | None = None
-_ec_service: EcBotService | None = None
+_topk_service: TopKService | None = None
+_reindexer: Reindexer | None = None
 
 
 def set_services(retrieval: RetrievalService | None) -> None:
-    global _service, _ec_service
+    global _service, _topk_service, _reindexer
     _service = retrieval
-    _ec_service = EcBotService(retrieval) if retrieval is not None else None
+    _topk_service = TopKService(retrieval) if retrieval is not None else None
+    _reindexer = Reindexer(retrieval) if retrieval is not None else None
 
 
 def get_service() -> RetrievalService:
@@ -28,7 +31,13 @@ def get_service() -> RetrievalService:
     return _service
 
 
-def get_ec_service() -> EcBotService:
-    if _ec_service is None:  # pragma: no cover - only if startup failed
+def get_topk_service() -> TopKService:
+    if _topk_service is None:  # pragma: no cover - only if startup failed
         raise HTTPException(status_code=503, detail="service not ready")
-    return _ec_service
+    return _topk_service
+
+
+def get_reindexer() -> Reindexer:
+    if _reindexer is None:  # pragma: no cover - only if startup failed
+        raise HTTPException(status_code=503, detail="service not ready")
+    return _reindexer

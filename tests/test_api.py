@@ -23,22 +23,22 @@ def test_health_reports_store_and_models(client):
 
 
 @pytest.fixture
-def ec_client(service):
-    from src.api.deps import get_ec_service
-    from src.ec_service import EcBotService
+def topk_client(service):
+    from src.api.deps import get_topk_service
+    from src.topk_service import TopKService
     from src.schemas import Document
     from tests.test_ec import CORPUS
 
     service.ingest([Document(doc_id=q, text=t, metadata={"tag": g}) for q, t, g in CORPUS])
     app.dependency_overrides[get_service] = lambda: service
-    app.dependency_overrides[get_ec_service] = lambda: EcBotService(service)
+    app.dependency_overrides[get_topk_service] = lambda: TopKService(service)
     yield TestClient(app)
     app.dependency_overrides.clear()
 
 
-def test_top_similar_endpoint_returns_ranked_hits(ec_client):
-    res = ec_client.post(
-        "/ec_bot/top_similar/", json={"question": "নতুন ভোটার হতে কি কি লাগে?", "top_k": 3}
+def test_top_similar_endpoint_returns_ranked_hits(topk_client):
+    res = topk_client.post(
+        "/topk/top_similar/", json={"question": "নতুন ভোটার হতে কি কি লাগে?", "top_k": 3}
     )
     assert res.status_code == 200
     hits = res.json()["top_similar"]
@@ -47,19 +47,19 @@ def test_top_similar_endpoint_returns_ranked_hits(ec_client):
     assert hits[0]["tag"] == "new_voter_docs"
 
 
-def test_top_similar_rejects_empty_question(ec_client):
-    assert ec_client.post("/ec_bot/top_similar/", json={"question": ""}).status_code == 422
+def test_top_similar_rejects_empty_question(topk_client):
+    assert topk_client.post("/topk/top_similar/", json={"question": ""}).status_code == 422
 
 
-def test_top_similar_rejects_out_of_range_top_k(ec_client):
+def test_top_similar_rejects_out_of_range_top_k(topk_client):
     for k in (0, 101):
-        res = ec_client.post("/ec_bot/top_similar/", json={"question": "ভোটার", "top_k": k})
+        res = topk_client.post("/topk/top_similar/", json={"question": "ভোটার", "top_k": k})
         assert res.status_code == 422, k
 
 
-def test_top_similar_unknown_model_is_a_400(ec_client):
-    res = ec_client.post(
-        "/ec_bot/top_similar/", json={"question": "ভোটার", "models": ["nope"]}
+def test_top_similar_unknown_model_is_a_400(topk_client):
+    res = topk_client.post(
+        "/topk/top_similar/", json={"question": "ভোটার", "models": ["nope"]}
     )
     assert res.status_code == 400
 
@@ -74,8 +74,10 @@ def test_public_route_set_is_exactly_the_supported_endpoints():
         for method in ops
     }
     assert routes == {
-        ("POST", "/ec_bot/top_similar/"),
+        ("POST", "/topk/top_similar/"),
         ("GET", "/health"),
+        ("POST", "/reindex"),
+        ("GET", "/reindex"),
     }
 
 

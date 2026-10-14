@@ -1,8 +1,4 @@
-"""EC FAQ top-k request/response models.
-
-Field names and ordering mirror the existing service at `:8002` so this can
-stand in for it.
-"""
+"""Top-k request/response models."""
 
 from __future__ import annotations
 
