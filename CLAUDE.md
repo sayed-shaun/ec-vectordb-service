@@ -7,20 +7,17 @@ that only makes one input, test or demo pass is rejected, even if it is green.
 
 - No special-casing a question, tag or string in `src/` — no `if question ==`,
   keyword tables or per-query overrides.
-- No bypassing the pipeline: normalise → embed → ANN → RRF → tag vote → answer,
-  through the similarity floor and consensus gate.
+- No bypassing the pipeline: normalise → embed → ANN → RRF → top-k hits.
 - No code that detects it is under test and branches differently.
 - No inline magic numbers. Thresholds, `top_k`, RRF `k`, batch sizes, model ids,
   prefixes, dims, weights, paths → `src/core/config.py`, overridable by an env var of the same name.
 - No corpus data in source; it is loaded from `data/`.
-- No fixing data bugs (the `"tag"` placeholder, stub answers) in retrieval code —
-  report them via `GET /ec_bot/audit`.
-- No faked results: return the honest `unable_to_answer` fallback with a real
-  `fallback_reason`.
+- No fixing data bugs in retrieval code — fix them in the corpus under `data/`.
+- No faked results: return what the index actually retrieved.
 
 If a general solution isn't reachable, say so instead of shipping a narrow one.
 Tuning a config default is fine when it's backed by corpus-wide measurement
-(see the floor tables in the README).
+(see the measurements in the README).
 
 ## Conventions
 
@@ -40,14 +37,13 @@ Code", no 🤖 line. Say what the change does, not which files moved. Commit onl
 when asked.
 
 ```
-Answer bare follow-ups by folding in prior questions
+Return each hit's tag alongside its cosine
 ```
 
 ## Tests
 
-`pytest`, or `pytest tests/test_qa.py -q`. Assert behaviour — `tag`,
-`confident`, `fallback_reason`, ordering, gate behaviour — not memorised answer
-strings, which is the hardcoding rule in test form. Test the general property
+`pytest`, or `pytest tests/test_ec.py -q`. Assert behaviour — `tag`,
+ordering, `top_k` bounds — not memorised corpus strings, which is the hardcoding rule in test form. Test the general property
 you fixed, not the input that reported it.
 
 ## Running
