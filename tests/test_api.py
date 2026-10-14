@@ -26,40 +26,42 @@ def test_health_reports_store_and_models(client):
 def topk_client(service):
     from src.api.deps import get_topk_service
     from src.topk_service import TopKService
+    from src.ec import AnswerStore
     from src.schemas import Document
-    from tests.test_ec import CORPUS
+    from tests.test_ec import ANSWERS, CORPUS
 
     service.ingest([Document(doc_id=q, text=t, metadata={"tag": g}) for q, t, g in CORPUS])
     app.dependency_overrides[get_service] = lambda: service
-    app.dependency_overrides[get_topk_service] = lambda: TopKService(service)
+    app.dependency_overrides[get_topk_service] = lambda: TopKService(service, AnswerStore(ANSWERS))
     yield TestClient(app)
     app.dependency_overrides.clear()
 
 
 def test_top_similar_endpoint_returns_ranked_hits(topk_client):
     res = topk_client.post(
-        "/topk/top_similar/", json={"question": "নতুন ভোটার হতে কি কি লাগে?", "top_k": 3}
+        "/api/v1/topk", json={"question": "নতুন ভোটার হতে কি কি লাগে?", "top_k": 3}
     )
     assert res.status_code == 200
     hits = res.json()["top_similar"]
     assert len(hits) == 3
     assert [h["rank"] for h in hits] == [1, 2, 3]
     assert hits[0]["tag"] == "new_voter_docs"
+    assert hits[0]["answer"]
 
 
 def test_top_similar_rejects_empty_question(topk_client):
-    assert topk_client.post("/topk/top_similar/", json={"question": ""}).status_code == 422
+    assert topk_client.post("/api/v1/topk", json={"question": ""}).status_code == 422
 
 
 def test_top_similar_rejects_out_of_range_top_k(topk_client):
     for k in (0, 101):
-        res = topk_client.post("/topk/top_similar/", json={"question": "ভোটার", "top_k": k})
+        res = topk_client.post("/api/v1/topk", json={"question": "ভোটার", "top_k": k})
         assert res.status_code == 422, k
 
 
 def test_top_similar_unknown_model_is_a_400(topk_client):
     res = topk_client.post(
-        "/topk/top_similar/", json={"question": "ভোটার", "models": ["nope"]}
+        "/api/v1/topk", json={"question": "ভোটার", "models": ["nope"]}
     )
     assert res.status_code == 400
 
@@ -74,7 +76,7 @@ def test_public_route_set_is_exactly_the_supported_endpoints():
         for method in ops
     }
     assert routes == {
-        ("POST", "/topk/top_similar/"),
+        ("POST", "/api/v1/topk"),
         ("GET", "/health"),
         ("POST", "/reindex"),
         ("GET", "/reindex"),
@@ -82,5 +84,5 @@ def test_public_route_set_is_exactly_the_supported_endpoints():
 
 
 def test_removed_routes_are_gone(client):
-    for path in ("/qa", "/documents", "/documents/delete", "/query", "/warmup"):
+    for path in ("/qa", "/topk/top_similar/", "/ec_bot/top_similar/", "/documents", "/documents/delete", "/query", "/warmup"):
         assert client.post(path, json={}).status_code == 404, path
