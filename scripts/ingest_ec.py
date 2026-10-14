@@ -2,9 +2,9 @@
 
     python scripts/ingest_ec.py [--limit N] [--batch 256] [--normalizer compat]
 
-Embeds ~18k canonical questions with all three models. Only the question text
+Embeds ~18k canonical questions with every configured model. Only the question text
 is embedded; the tag and the original surface form ride along in the payload
-and the answer is resolved at query time from tag_answer.json.
+and come back with each hit.
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ sys.path.insert(0, ".")
 from src.schemas import Document  # noqa: E402
 from src.core.config import MODEL_SPECS  # noqa: E402
 from src.core.logger import setup_logging  # noqa: E402
-from src.ec import AnswerStore, audit, load_questions  # noqa: E402
+from src.ec import load_questions  # noqa: E402
 from src.normalize import normalize  # noqa: E402
 from src.service import RetrievalService  # noqa: E402
 from src.store import VectorStore  # noqa: E402
@@ -41,23 +41,7 @@ def main() -> None:
     args = ap.parse_args()
 
     questions = load_questions()
-    answers = AnswerStore.load()
-
-    report = audit(questions, answers)
-    log.info(
-        "corpus: %d questions, %d tags, %d answers",
-        report["questions"], report["reachable_tags"], report["answer_entries"],
-    )
-    if report["tags_without_answer"]:
-        log.error("ABORT: %d tags have no answer", len(report["tags_without_answer"]))
-        sys.exit(1)
-    if report["questions_with_degenerate_answer"]:
-        log.warning(
-            "%d questions (%.1f%%) resolve to a stub answer; worst: %s",
-            report["questions_with_degenerate_answer"],
-            report["questions_with_degenerate_answer"] / report["questions"] * 100,
-            report["degenerate_answers"][0]["tag"],
-        )
+    log.info("corpus: %d questions, %d tags", len(questions), len({q.tag for q in questions}))
 
     if args.limit:
         questions = questions[: args.limit]
@@ -93,7 +77,6 @@ def main() -> None:
                 text=normalize(q.question, args.normalizer),
                 metadata={
                     "tag": q.tag,
-                    "answer": answers.get(q.tag),
                     "raw_question": q.question,
                     "source": "question_tag.csv",
                     "lang": "bn",

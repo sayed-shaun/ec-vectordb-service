@@ -4,6 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from main import app
+from src.core.config import MODEL_SPECS
 from src.api.deps import get_service
 
 
@@ -18,72 +19,66 @@ def test_health_reports_store_and_models(client):
     body = client.get("/health").json()
     assert body["status"] == "ok"
     assert body["store"]["exists"] is True
-    assert set(body["models"]) == {"e5", "qwen3", "bge_m3"}
+    assert set(body["models"]) == {s.name for s in MODEL_SPECS}
 
 
 @pytest.fixture
 def ec_client(service):
     from src.api.deps import get_ec_service
-    from src.ec import AnswerStore
     from src.ec_service import EcBotService
     from src.schemas import Document
-    from tests.test_ec import ANSWERS, CORPUS
+    from tests.test_ec import CORPUS
 
     service.ingest([Document(doc_id=q, text=t, metadata={"tag": g}) for q, t, g in CORPUS])
-    ec = EcBotService(service, AnswerStore(ANSWERS))
     app.dependency_overrides[get_service] = lambda: service
-    app.dependency_overrides[get_ec_service] = lambda: ec
+    app.dependency_overrides[get_ec_service] = lambda: EcBotService(service)
     yield TestClient(app)
     app.dependency_overrides.clear()
 
 
-def test_qa_endpoint_returns_an_answer(ec_client):
-    res = ec_client.post("/qa", json={"question": "নতুন ভোটার হতে কি কি লাগে?", "min_cosine": 0.0})
+def test_top_similar_endpoint_returns_ranked_hits(ec_client):
+    res = ec_client.post(
+        "/ec_bot/top_similar/", json={"question": "নতুন ভোটার হতে কি কি লাগে?", "top_k": 3}
+    )
     assert res.status_code == 200
-    body = res.json()
-    assert body["confident"] is True
-    assert body["tag"] == "new_voter_docs"
-    assert body["answer"]
-    assert set(body["per_model_tag"]) == {"e5", "qwen3", "bge_m3"}
+    hits = res.json()["top_similar"]
+    assert len(hits) == 3
+    assert [h["rank"] for h in hits] == [1, 2, 3]
+    assert hits[0]["tag"] == "new_voter_docs"
 
 
-def test_qa_endpoint_rejects_empty_question(ec_client):
-    assert ec_client.post("/qa", json={"question": ""}).status_code == 422
+def test_top_similar_rejects_empty_question(ec_client):
+    assert ec_client.post("/ec_bot/top_similar/", json={"question": ""}).status_code == 422
 
 
-def test_public_route_set_is_exactly_the_four_supported_endpoints():
+def test_top_similar_rejects_out_of_range_top_k(ec_client):
+    for k in (0, 101):
+        res = ec_client.post("/ec_bot/top_similar/", json={"question": "ভোটার", "top_k": k})
+        assert res.status_code == 422, k
+
+
+def test_top_similar_unknown_model_is_a_400(ec_client):
+    res = ec_client.post(
+        "/ec_bot/top_similar/", json={"question": "ভোটার", "models": ["nope"]}
+    )
+    assert res.status_code == 400
+
+
+def test_public_route_set_is_exactly_the_supported_endpoints():
     """A guard, not a formality: /documents and /documents/delete were once
-    unauthenticated write and delete routes that no caller used."""
+    unauthenticated write and delete routes that no caller used. Read from the
+    OpenAPI schema, which is stable across FastAPI's internal route wrapping."""
     routes = {
-        (method, r.path)
-        for r in app.routes
-        if getattr(r, "methods", None)
-        for method in r.methods
-        if method not in ("HEAD", "OPTIONS") and not r.path.startswith(("/docs", "/redoc", "/openapi"))
+        (method.upper(), path)
+        for path, ops in app.openapi()["paths"].items()
+        for method in ops
     }
     assert routes == {
-        ("POST", "/qa"),
         ("POST", "/ec_bot/top_similar/"),
-        ("GET", "/ec_bot/audit"),
         ("GET", "/health"),
     }
 
 
-def test_removed_write_routes_are_gone(client):
-    for path in ("/documents", "/documents/delete", "/query", "/warmup"):
+def test_removed_routes_are_gone(client):
+    for path in ("/qa", "/documents", "/documents/delete", "/query", "/warmup"):
         assert client.post(path, json={}).status_code == 404, path
-
-
-def test_console_is_served_from_the_api_origin(client):
-    """Same origin is the point: the page calls /qa relatively, so there is no
-    CORS middleware to keep in step with whatever port it is exposed on."""
-    res = client.get("/static/index.html")
-    assert res.status_code == 200
-    assert res.headers["content-type"].startswith("text/html")
-    assert "fetch('/qa'" in res.text
-
-
-def test_console_is_absent_from_the_openapi_schema(client):
-    """It is a developer tool, not part of the contract."""
-    paths = client.get("/openapi.json").json()["paths"]
-    assert not [p for p in paths if p.startswith("/static")]

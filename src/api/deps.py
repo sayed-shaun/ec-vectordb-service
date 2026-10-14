@@ -16,12 +16,10 @@ _service: RetrievalService | None = None
 _ec_service: EcBotService | None = None
 
 
-def set_services(
-    retrieval: RetrievalService | None, ec_bot: EcBotService | None = None
-) -> None:
+def set_services(retrieval: RetrievalService | None) -> None:
     global _service, _ec_service
     _service = retrieval
-    _ec_service = ec_bot
+    _ec_service = EcBotService(retrieval) if retrieval is not None else None
 
 
 def get_service() -> RetrievalService:
@@ -31,9 +29,6 @@ def get_service() -> RetrievalService:
 
 
 def get_ec_service() -> EcBotService:
-    if _ec_service is None:
-        raise HTTPException(
-            status_code=503,
-            detail="EC dataset not loaded; expected data/tag_answer.json",
-        )
+    if _ec_service is None:  # pragma: no cover - only if startup failed
+        raise HTTPException(status_code=503, detail="service not ready")
     return _ec_service
