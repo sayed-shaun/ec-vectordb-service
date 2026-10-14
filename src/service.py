@@ -46,7 +46,7 @@ class RetrievalService:
             raise ValueError(f"unknown model(s): {', '.join(unknown)}")
 
         per_model_limit = min(
-            req.top_k * settings.candidate_multiplier, settings.max_candidates_per_model
+            req.top_k * settings.CANDIDATE_MULTIPLIER, settings.MAX_CANDIDATES_PER_MODEL
         )
 
         query_vectors = self.embedders.embed_queries(req.question, models=model_names)
@@ -65,7 +65,7 @@ class RetrievalService:
         fused = fuse(
             candidates,
             weights=weights,
-            k=settings.rrf_k,
+            k=settings.RRF_K,
             top_k=req.top_k,
             min_votes=req.min_votes,
         )

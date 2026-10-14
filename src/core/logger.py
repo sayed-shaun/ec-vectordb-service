@@ -49,16 +49,16 @@ class CappedFileHandler(RotatingFileHandler):
 
 
 def _build_file_handler(level: int) -> logging.Handler | None:
-    if not settings.log_file:
+    if not settings.LOG_FILE:
         return None
 
-    path = Path(settings.log_file)
+    path = Path(settings.LOG_FILE)
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         handler = CappedFileHandler(
             path,
-            maxBytes=settings.log_max_bytes,
-            backupCount=settings.log_backup_count,
+            maxBytes=settings.LOG_MAX_BYTES,
+            backupCount=settings.LOG_BACKUP_COUNT,
             encoding="utf-8",
         )
     except OSError as exc:
@@ -77,7 +77,7 @@ def setup_logging(force: bool = False) -> logging.Logger:
     if _configured and not force:
         return root
 
-    level = logging.getLevelNamesMapping().get(settings.log_level.upper(), logging.INFO)
+    level = logging.getLevelNamesMapping().get(settings.LOG_LEVEL.upper(), logging.INFO)
 
     for handler in list(root.handlers):
         root.removeHandler(handler)
@@ -105,8 +105,8 @@ def setup_logging(force: bool = False) -> logging.Logger:
     if file_handler is not None:
         root.debug(
             "logging to %s (cap %.1f MiB, %d backups)",
-            os.path.abspath(settings.log_file),
-            settings.log_max_bytes / 2**20,
-            settings.log_backup_count,
+            os.path.abspath(settings.LOG_FILE),
+            settings.LOG_MAX_BYTES / 2**20,
+            settings.LOG_BACKUP_COUNT,
         )
     return root

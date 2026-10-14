@@ -69,8 +69,8 @@ class Reindexer:
             index_questions(
                 self.service,
                 questions,
-                settings.index_normalizer,
-                settings.index_batch_size,
+                settings.INDEX_NORMALIZER,
+                settings.INDEX_BATCH_SIZE,
                 on_progress=lambda n: self._set(indexed=n),
             )
 

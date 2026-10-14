@@ -106,7 +106,7 @@ def test_post_while_running_is_a_409(api):
 
 def test_token_is_required_when_configured(api, monkeypatch):
     client, _ = api
-    monkeypatch.setattr(settings, "reindex_token", "s3cret")
+    monkeypatch.setattr(settings, "REINDEX_TOKEN", "s3cret")
     assert client.post("/reindex").status_code == 401
     assert client.post("/reindex", headers={"X-Reindex-Token": "nope"}).status_code == 401
     assert client.get("/reindex").status_code == 401

@@ -71,7 +71,7 @@ def test_setup_logging_is_idempotent(tmp_path, monkeypatch):
     from src.core import logger as logger_mod
     from src.core.config import settings
 
-    monkeypatch.setattr(settings, "log_file", str(tmp_path / "svc.log"))
+    monkeypatch.setattr(settings, "LOG_FILE", str(tmp_path / "svc.log"))
     monkeypatch.setattr(logger_mod, "_configured", False)
 
     root = logger_mod.setup_logging(force=True)
@@ -89,7 +89,7 @@ def test_missing_log_dir_is_created(tmp_path, monkeypatch):
     from src.core.config import settings
 
     target = tmp_path / "deep" / "nested" / "svc.log"
-    monkeypatch.setattr(settings, "log_file", str(target))
+    monkeypatch.setattr(settings, "LOG_FILE", str(target))
     monkeypatch.setattr(logger_mod, "_configured", False)
 
     root = logger_mod.setup_logging(force=True)

@@ -53,7 +53,7 @@ class SentenceTransformerEmbedder:
                 model = SentenceTransformer(
                     self.spec.hf_id,
                     device=device,
-                    cache_folder=settings.model_cache_dir,
+                    cache_folder=settings.MODEL_CACHE_DIR,
                     trust_remote_code=True,
                     model_kwargs=model_kwargs or None,
                 )
@@ -75,7 +75,7 @@ class SentenceTransformerEmbedder:
             kwargs["prompt_name"] = prompt_name
         vectors = model.encode(
             texts,
-            batch_size=settings.embed_batch_size,
+            batch_size=settings.EMBED_BATCH_SIZE,
             normalize_embeddings=self.spec.normalize,
             convert_to_numpy=True,
             show_progress_bar=False,

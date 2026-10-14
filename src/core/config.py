@@ -73,11 +73,11 @@ class ModelSpec:
     normalize: bool = True
 
     def resolved_dtype(self) -> str:
-        return resolve_dtype(self.dtype or settings.dtype, self.resolved_device())
+        return resolve_dtype(self.dtype or settings.DTYPE, self.resolved_device())
 
     def resolved_device(self) -> str:
         return resolve_device(
-            self.device or settings.device_overrides.get(self.name) or settings.device
+            self.device or settings.DEVICE_OVERRIDES.get(self.name) or settings.DEVICE
         )
 
     def vram_estimate_mib(self) -> float:
@@ -134,49 +134,49 @@ class Settings(BaseSettings):
         env_prefix="", env_file=".env", extra="ignore", protected_namespaces=()
     )
 
-    qdrant_url: str = "http://localhost:6333"
-    qdrant_api_key: str | None = None
-    collection: str = "ec_documents"
+    QDRANT_URL: str = "http://localhost:6333"
+    QDRANT_API_KEY: str | None = None
+    COLLECTION: str = "ec_documents"
 
-    candidate_multiplier: int = 4
-    max_candidates_per_model: int = 200
+    CANDIDATE_MULTIPLIER: int = 4
+    MAX_CANDIDATES_PER_MODEL: int = 200
 
-    rrf_k: int = 60
+    RRF_K: int = 60
 
-    embed_batch_size: int = 16
+    EMBED_BATCH_SIZE: int = 16
 
     # POST /reindex pulls the corpus from this private GitHub repo, then
     # re-embeds it. The token is the same GITHUB_TOKEN scripts/fetch_dataset.sh
     # reads; scope required: repo (read).
-    github_token: str | None = None
-    dataset_repo: str = "Synesis-IT-PLC/ec-faq-bot"
-    dataset_ref: str = "development"
-    dataset_path: str = "full_dataset/question_tag.csv"
-    dataset_timeout_s: float = 60.0
+    GITHUB_TOKEN: str | None = None
+    DATASET_REPO: str = "Synesis-IT-PLC/ec-faq-bot"
+    DATASET_REF: str = "development"
+    DATASET_PATH: str = "full_dataset/question_tag.csv"
+    DATASET_TIMEOUT_S: float = 60.0
     # Rows per upsert, and per page when pruning stale points.
-    index_batch_size: int = 256
+    INDEX_BATCH_SIZE: int = 256
     # Must match the normaliser queries use, or the index and the questions
     # sit in different spaces.
-    index_normalizer: Literal["compat", "safe", "none"] = "compat"
+    INDEX_NORMALIZER: Literal["compat", "safe", "none"] = "compat"
     # The service has no authentication, and /reindex is a heavy write. When
     # set, callers must send it as X-Reindex-Token; unset leaves it open.
-    reindex_token: str | None = None
+    REINDEX_TOKEN: str | None = None
 
-    eager_load_models: bool = False
-    model_cache_dir: str | None = None
+    EAGER_LOAD_MODELS: bool = False
+    MODEL_CACHE_DIR: str | None = None
 
-    device: str = "cpu"
+    DEVICE: str = "cpu"
     # Half precision is the deployment standard. A CPU-resident model still
     # runs fp32 regardless (ModelSpec.resolved_dtype), so this is safe on a
     # box without a GPU.
-    dtype: str = "float16"
+    DTYPE: str = "float16"
 
-    device_overrides: dict[str, str] = {}
+    DEVICE_OVERRIDES: dict[str, str] = {}
 
-    log_level: str = "INFO"
-    log_file: str = "logs/ec-vectordb.log"
-    log_max_bytes: int = 10 * 1024 * 1024
-    log_backup_count: int = 0
+    LOG_LEVEL: str = "INFO"
+    LOG_FILE: str = "logs/ec-vectordb.log"
+    LOG_MAX_BYTES: int = 10 * 1024 * 1024
+    LOG_BACKUP_COUNT: int = 0
 
 
 settings = Settings()

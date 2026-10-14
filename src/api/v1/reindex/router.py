@@ -13,7 +13,7 @@ from src.reindex import Reindexer
 
 
 def require_token(x_reindex_token: str | None = Header(None)) -> None:
-    expected = settings.reindex_token
+    expected = settings.REINDEX_TOKEN
     if expected and not hmac.compare_digest(x_reindex_token or "", expected):
         raise HTTPException(status_code=401, detail="invalid or missing X-Reindex-Token")
 

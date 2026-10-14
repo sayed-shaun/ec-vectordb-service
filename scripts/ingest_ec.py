@@ -30,8 +30,8 @@ log = logging.getLogger("ingest")
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--limit", type=int, default=0, help="index only the first N rows")
-    ap.add_argument("--batch", type=int, default=settings.index_batch_size, help="rows per upsert")
-    ap.add_argument("--normalizer", default=settings.index_normalizer, choices=["compat", "safe", "none"])
+    ap.add_argument("--batch", type=int, default=settings.INDEX_BATCH_SIZE, help="rows per upsert")
+    ap.add_argument("--normalizer", default=settings.INDEX_NORMALIZER, choices=["compat", "safe", "none"])
     ap.add_argument("--recreate", action="store_true", help="drop the collection first")
     ap.add_argument(
         "--resume", action="store_true",

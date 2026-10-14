@@ -21,19 +21,19 @@ def fetch_dataset(dest: Path) -> int:
     the previous good copy replaced.
     """
     url = (
-        f"https://api.github.com/repos/{settings.dataset_repo}/contents/"
-        f"{settings.dataset_path}?ref={settings.dataset_ref}"
+        f"https://api.github.com/repos/{settings.DATASET_REPO}/contents/"
+        f"{settings.DATASET_PATH}?ref={settings.DATASET_REF}"
     )
     headers = {"Accept": "application/vnd.github.raw"}
-    if settings.github_token:
-        headers["Authorization"] = f"Bearer {settings.github_token}"
+    if settings.GITHUB_TOKEN:
+        headers["Authorization"] = f"Bearer {settings.GITHUB_TOKEN}"
 
-    log.info("fetching %s@%s:%s", settings.dataset_repo, settings.dataset_ref, settings.dataset_path)
+    log.info("fetching %s@%s:%s", settings.DATASET_REPO, settings.DATASET_REF, settings.DATASET_PATH)
     req = urllib.request.Request(url, headers=headers)
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_name(dest.name + ".tmp")
     try:
-        with urllib.request.urlopen(req, timeout=settings.dataset_timeout_s) as resp:
+        with urllib.request.urlopen(req, timeout=settings.DATASET_TIMEOUT_S) as resp:
             tmp.write_bytes(resp.read())
         rows = len(load_questions(tmp))
         if not rows:

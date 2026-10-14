@@ -25,10 +25,10 @@ def stable_point_id(doc_id: str) -> str:
 
 class VectorStore:
     def __init__(self, client: QdrantClient | None = None, collection: str | None = None) -> None:
-        self.collection = collection or settings.collection
+        self.collection = collection or settings.COLLECTION
         self.client = client or QdrantClient(
-            url=settings.qdrant_url,
-            api_key=settings.qdrant_api_key,
+            url=settings.QDRANT_URL,
+            api_key=settings.QDRANT_API_KEY,
             timeout=60,
         )
 
@@ -129,7 +129,7 @@ class VectorStore:
         while True:
             records, offset = self.client.scroll(
                 collection_name=self.collection,
-                limit=settings.index_batch_size,
+                limit=settings.INDEX_BATCH_SIZE,
                 offset=offset,
                 with_payload=False,
                 with_vectors=False,
@@ -137,11 +137,11 @@ class VectorStore:
             stale.extend(r.id for r in records if str(r.id) not in keep)
             if offset is None:
                 break
-        for i in range(0, len(stale), settings.index_batch_size):
+        for i in range(0, len(stale), settings.INDEX_BATCH_SIZE):
             self.client.delete(
                 collection_name=self.collection,
                 points_selector=models.PointIdsList(
-                    points=stale[i : i + settings.index_batch_size]
+                    points=stale[i : i + settings.INDEX_BATCH_SIZE]
                 ),
                 wait=True,
             )

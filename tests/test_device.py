@@ -13,9 +13,9 @@ SPEC = MODEL_SPECS[0]
 @pytest.fixture
 def cfg(monkeypatch):
     def apply(device="cpu", dtype="float32", overrides=None):
-        monkeypatch.setattr(settings, "device", device)
-        monkeypatch.setattr(settings, "dtype", dtype)
-        monkeypatch.setattr(settings, "device_overrides", overrides or {})
+        monkeypatch.setattr(settings, "DEVICE", device)
+        monkeypatch.setattr(settings, "DTYPE", dtype)
+        monkeypatch.setattr(settings, "DEVICE_OVERRIDES", overrides or {})
     return apply
 
 

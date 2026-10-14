@@ -29,7 +29,7 @@ async def lifespan(app: FastAPI):
     store.ensure_collection()
     set_services(RetrievalService(store))
 
-    if settings.eager_load_models:
+    if settings.EAGER_LOAD_MODELS:
         log.info("warming up embedding models")
         registry.warmup()
     yield
