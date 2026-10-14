@@ -13,7 +13,7 @@ old EC bot service at `:8002`, so existing callers must update the URL.
 `data/question_tag.csv` — 18,020 canonical questions over 532 tags. Only the
 question text is embedded; the tag and the original surface form ride along in
 the payload and come back with each hit, together with the tag's answer from
-`data/tag_answer.json`. `data/` is fetched from a private
+`data/tag_answer.json`, stored as metadata at index time. `data/` is fetched from a private
 repo by `scripts/fetch_dataset.sh` and is not committed.
 
 ## Pipeline
@@ -44,21 +44,22 @@ cosine.
 | `min_votes` | 1 | drop hits fewer models retrieved |
 | `normalizer` | `compat` | `compat`, `safe` or `none` |
 
-Each hit carries `answer`, the answer for its tag from `data/tag_answer.json`
-(`null` when the tag has none). Answers are attached as stored: there is no
-winning tag, similarity floor or fallback.
+Each hit carries `answer`, its tag's answer from `data/tag_answer.json` (`null`
+when the tag has none). The answer is stored in the point's payload next to the
+tag when the question is indexed, so queries never read the answers file and an
+answer change reaches queries only after a reindex. There is no winning tag,
+similarity floor or fallback.
 
 Response:
 
 ```json
 {
-  "input_question": "...",
-  "normalized_question": "...",
+  "input_question": "hi",
+  "normalized_question": "hi",
   "top_similar": [
-    {"rank": 1, "question": "...", "tag": "...", "answer": "...", "cosine_similarity": 0.93,
-     "votes": 1, "per_model": {"e5": {"rank": 1, "score": 0.93}}}
-  ],
-  "took_ms": 41.2
+    {"rank": 1, "question": "hlw", "answer": "...", "tag": "greetings",
+     "cosine_similarity": 0.985506}
+  ]
 }
 ```
 

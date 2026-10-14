@@ -26,13 +26,14 @@ def test_health_reports_store_and_models(client):
 def topk_client(service):
     from src.api.deps import get_topk_service
     from src.topk_service import TopKService
-    from src.ec import AnswerStore
     from src.schemas import Document
     from tests.test_ec import ANSWERS, CORPUS
 
-    service.ingest([Document(doc_id=q, text=t, metadata={"tag": g}) for q, t, g in CORPUS])
+    service.ingest(
+        [Document(doc_id=q, text=t, metadata={"tag": g, "answer": ANSWERS[g]}) for q, t, g in CORPUS]
+    )
     app.dependency_overrides[get_service] = lambda: service
-    app.dependency_overrides[get_topk_service] = lambda: TopKService(service, AnswerStore(ANSWERS))
+    app.dependency_overrides[get_topk_service] = lambda: TopKService(service)
     yield TestClient(app)
     app.dependency_overrides.clear()
 

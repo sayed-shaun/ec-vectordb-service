@@ -6,9 +6,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from src.schemas import ModelVote
-
-__all__ = ["ModelVote", "SimilarQuestion", "TopSimilarRequest", "TopSimilarResponse"]
+__all__ = ["SimilarQuestion", "TopSimilarRequest", "TopSimilarResponse"]
 
 
 class TopSimilarRequest(BaseModel):
@@ -36,17 +34,14 @@ class TopSimilarRequest(BaseModel):
 class SimilarQuestion(BaseModel):
     rank: int
     question: str
-    tag: str
     answer: str | None = Field(
-        None, description="The tag's answer from tag_answer.json; null if the tag has none."
+        None, description="The tag's answer, stored with the question at index time; null if the tag had none."
     )
+    tag: str
     cosine_similarity: float
-    votes: int = 0
-    per_model: dict[str, ModelVote] = Field(default_factory=dict)
 
 
 class TopSimilarResponse(BaseModel):
     input_question: str
     normalized_question: str
     top_similar: list[SimilarQuestion]
-    took_ms: float = 0.0

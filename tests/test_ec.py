@@ -28,9 +28,12 @@ ANSWERS = {
 @pytest.fixture
 def ec(service):
     service.ingest(
-        [Document(doc_id=q, text=t, metadata={"tag": tag, "lang": "bn"}) for q, t, tag in CORPUS]
+        [
+            Document(doc_id=q, text=t, metadata={"tag": tag, "answer": ANSWERS.get(tag), "lang": "bn"})
+            for q, t, tag in CORPUS
+        ]
     )
-    return TopKService(service, AnswerStore(ANSWERS))
+    return TopKService(service)
 
 
 def test_response_matches_reference_contract(ec):
@@ -76,12 +79,21 @@ def test_each_hit_carries_its_tags_answer(ec):
 
 
 def test_a_tag_without_an_answer_gives_a_null_answer(service):
-    service.ingest([Document(doc_id="x", text="নতুন প্রশ্ন", metadata={"tag": "orphan"})])
-    res = TopKService(service, AnswerStore(ANSWERS)).top_similar(
+    service.ingest([Document(doc_id="x", text="নতুন প্রশ্ন", metadata={"tag": "orphan", "answer": None})])
+    res = TopKService(service).top_similar(
         TopSimilarRequest(question="নতুন প্রশ্ন", top_k=1)
     )
     assert res.top_similar[0].tag == "orphan"
     assert res.top_similar[0].answer is None
+
+
+def test_response_shape_is_exactly_question_hits_with_answer_and_tag(ec):
+    body = json.loads(
+        ec.top_similar(TopSimilarRequest(question="সংশোধন ফি", top_k=2)).model_dump_json()
+    )
+    assert list(body) == ["input_question", "normalized_question", "top_similar"]
+    for hit in body["top_similar"]:
+        assert list(hit) == ["rank", "question", "answer", "tag", "cosine_similarity"]
 
 
 def test_answers_are_not_voted_on_or_gated(ec):
@@ -106,7 +118,6 @@ def test_a_named_model_subset_is_served(ec):
         )
     )
     assert res.top_similar
-    assert all(set(h.per_model) == {MODEL_SPECS[0].name} for h in res.top_similar)
 
 
 @pytest.mark.skipif(
@@ -118,15 +129,11 @@ def test_real_dataset_loads_every_row_with_a_tag():
     assert all(r.question and r.tag for r in rows)
 
 
-def test_answer_store_reload_swaps_the_mapping(tmp_path):
+def test_answer_store_loads_the_tag_to_answer_map(tmp_path):
     path = tmp_path / "tag_answer.json"
     path.write_text('{"a": "one"}', encoding="utf-8")
     store = AnswerStore.load(path)
-    assert store.get("a") == "one"
-
-    path.write_text('{"b": "two"}', encoding="utf-8")
-    assert store.reload(path) == 1
-    assert store.get("a") is None and store.get("b") == "two"
+    assert store.get("a") == "one" and store.get("b") is None
 
 
 def test_a_missing_answer_file_loads_empty(tmp_path):
