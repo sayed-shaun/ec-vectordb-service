@@ -161,9 +161,10 @@ class Settings(BaseSettings):
     EAGER_LOAD_MODELS: bool = False
     MODEL_CACHE_DIR: str | None = None
 
-    # "auto" uses CUDA when torch can see it and CPU otherwise, so the same
-    # image or checkout runs on either with no env set.
-    DEVICE: str = "auto"
+    # GPU by default. An explicit "cuda" with no usable CUDA degrades to CPU
+    # with a warning (resolve_device), so a GPU-less box still boots; set
+    # DEVICE=cpu to choose the CPU deliberately and skip the warning.
+    DEVICE: str = "cuda"
     # Half precision is the deployment standard. A CPU-resident model still
     # runs fp32 regardless (ModelSpec.resolved_dtype), so this is safe on a
     # box without a GPU.

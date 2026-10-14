@@ -5,7 +5,7 @@ import dataclasses
 
 import pytest
 
-from src.core.config import MODEL_SPECS, settings
+from src.core.config import MODEL_SPECS, resolve_device, settings
 
 SPEC = MODEL_SPECS[0]
 
@@ -57,8 +57,18 @@ def test_spec_dtype_pins_one_model_against_the_global(cfg):
     assert pinned.resolved_dtype() == "float32"
 
 
+def test_the_cuda_default_still_boots_without_a_gpu(monkeypatch):
+    """No usable CUDA degrades to CPU rather than crashing."""
+    import sys
+    import types
+
+    no_gpu = types.SimpleNamespace(cuda=types.SimpleNamespace(is_available=lambda: False))
+    monkeypatch.setitem(sys.modules, "torch", no_gpu)
+    assert resolve_device("cuda") == "cpu"
+
+
 def test_defaults_need_no_env_file(monkeypatch, tmp_path):
-    """Booting with no .env and no env vars: auto device, local Qdrant."""
+    """Booting with no .env and no env vars: GPU device, local Qdrant."""
     from src.core.config import Settings
 
     for var in ("DEVICE", "QDRANT_URL", "DTYPE"):
@@ -66,5 +76,5 @@ def test_defaults_need_no_env_file(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)  # no .env here
     fresh = Settings(_env_file=None)
 
-    assert fresh.DEVICE == "auto"
+    assert fresh.DEVICE == "cuda"
     assert fresh.QDRANT_URL == "http://localhost:6333"
