@@ -5,15 +5,15 @@ embedded with `intfloat/multilingual-e5-large-instruct`, matched against
 canonical questions in Qdrant, and the closest `top_k` come back with their
 tag and cosine similarity.
 
-The endpoint is `POST /topk/top_similar/`. The request and response fields match
-the old EC bot service at `:8002`, but the path moved from `/ec_bot/top_similar/`,
-so existing callers must update the URL.
+The endpoint is `POST /api/v1/topk`. It replaces `/ec_bot/top_similar/` from the
+old EC bot service at `:8002`, so existing callers must update the URL.
 
 ## Corpus
 
 `data/question_tag.csv` — 18,020 canonical questions over 532 tags. Only the
 question text is embedded; the tag and the original surface form ride along in
-the payload and come back with each hit. `data/` is fetched from a private
+the payload and come back with each hit, together with the tag's answer from
+`data/tag_answer.json`. `data/` is fetched from a private
 repo by `scripts/fetch_dataset.sh` and is not committed.
 
 ## Pipeline
@@ -29,7 +29,7 @@ cosine.
 
 ## API
 
-### `POST /topk/top_similar/`
+### `POST /api/v1/topk`
 
 ```json
 { "question": "আমার নাম ভুল আছে আমার nid কার্ডে কি করবো ?", "top_k": 10 }
@@ -44,6 +44,10 @@ cosine.
 | `min_votes` | 1 | drop hits fewer models retrieved |
 | `normalizer` | `compat` | `compat`, `safe` or `none` |
 
+Each hit carries `answer`, the answer for its tag from `data/tag_answer.json`
+(`null` when the tag has none). Answers are attached as stored: there is no
+winning tag, similarity floor or fallback.
+
 Response:
 
 ```json
@@ -51,7 +55,7 @@ Response:
   "input_question": "...",
   "normalized_question": "...",
   "top_similar": [
-    {"rank": 1, "question": "...", "tag": "...", "cosine_similarity": 0.93,
+    {"rank": 1, "question": "...", "tag": "...", "answer": "...", "cosine_similarity": 0.93,
      "votes": 1, "per_model": {"e5": {"rank": 1, "score": 0.93}}}
   ],
   "took_ms": 41.2
@@ -60,7 +64,7 @@ Response:
 
 ### `POST /reindex`
 
-Downloads `question_tag.csv` from the private GitHub repo (`DATASET_REPO`,
+Downloads `question_tag.csv` and `tag_answer.json` from the private GitHub repo (`DATASET_REPO`,
 `DATASET_REF`, `DATASET_PATH`) with the **caller's** GitHub token, then embeds
 and upserts it in the background. Returns `202` with the job status, `401` if
 the `X-GitHub-Token` header is missing, or `409` if a job is already running.
@@ -102,7 +106,7 @@ same choices.
 ```
 main.py                     ASGI entrypoint, lifespan wiring
 src/
-  api/v1/topk/            top_similar router + schemas
+  api/v1/topk/              top-k router + schemas
   api/v1/system/            health
   core/config.py            settings + MODEL_SPECS
   embedding.py              model registry, device/dtype resolution
@@ -139,12 +143,14 @@ them. The model runs fp16 on GPU; a CPU-resident model stays fp32 whatever
 
 Every setting has a default in `src/core/config.py` and is overridable by an
 env var of the same name (no prefix, from the environment or `.env`).
-`.env.example` lists only the ones that normally differ per environment:
+No `.env` is needed: with nothing set it talks to Qdrant at
+`http://localhost:6333` and picks the GPU if one is visible, else the CPU.
+`.env.example` lists the two you are most likely to override:
 
 | var | default | |
 |---|---|---|
-| `QDRANT_URL` | `http://localhost:6333` | |
-| `DEVICE` | `cpu` | `cpu`, `cuda` or `auto` |
+| `QDRANT_URL` | `http://localhost:6333` | (`http://qdrant:6333` under Compose) |
+| `DEVICE` | `auto` | `auto`, `cpu` or `cuda` |
 
 Others worth knowing: `COLLECTION`, `DTYPE`, `DEVICE_OVERRIDES`,
 `CANDIDATE_MULTIPLIER`, `RRF_K`, `EMBED_BATCH_SIZE`, `EAGER_LOAD_MODELS`,

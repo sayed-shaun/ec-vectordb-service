@@ -25,9 +25,10 @@ services:
         condition: service_healthy
     environment:
       QDRANT_URL: http://qdrant:6333
-      # CPU by default so the stack boots anywhere. Switch to GPU with the
-      # overlay: docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
-      DEVICE: ${DEVICE:-cpu}
+      # auto: GPU when the container can see one, CPU otherwise. The GPU
+      # overlay (docker compose -f docker-compose.yml -f docker-compose.gpu.yml
+      # up -d) is what grants the container the card.
+      DEVICE: ${DEVICE:-auto}
       EAGER_LOAD_MODELS: "true"
       LOG_FILE: /srv/logs/ec-vectordb.log
     volumes:

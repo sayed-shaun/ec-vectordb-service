@@ -55,3 +55,16 @@ def test_spec_dtype_pins_one_model_against_the_global(cfg):
     cfg(device="cuda", dtype="float16")
     pinned = dataclasses.replace(SPEC, dtype="float32", device="cuda")
     assert pinned.resolved_dtype() == "float32"
+
+
+def test_defaults_need_no_env_file(monkeypatch, tmp_path):
+    """Booting with no .env and no env vars: auto device, local Qdrant."""
+    from src.core.config import Settings
+
+    for var in ("DEVICE", "QDRANT_URL", "DTYPE"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.chdir(tmp_path)  # no .env here
+    fresh = Settings(_env_file=None)
+
+    assert fresh.DEVICE == "auto"
+    assert fresh.QDRANT_URL == "http://localhost:6333"
