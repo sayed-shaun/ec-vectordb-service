@@ -4,11 +4,9 @@
 # ~2.5 GB copy of the CUDA libraries on top of the base. The extra is for
 # workstations and CI, which have no base image to inherit it from.
 #
-# torch must be >= 2.6. BAAI/bge-m3 publishes only `pytorch_model.bin` with no
-# safetensors, and transformers refuses to `torch.load` a pickle checkpoint on
-# older torch because of CVE-2025-32434. On 2.5.1 the service dies at startup
-# with "we now require users to upgrade torch to at least v2.6". Do not pin
-# this back without first checking whether bge-m3 has shipped safetensors.
+# torch must be >= 2.6: transformers refuses to `torch.load` a pickle
+# checkpoint on older torch because of CVE-2025-32434, so any model without
+# safetensors dies at startup. Keep the floor even while e5 ships safetensors.
 #
 # CUDA 12.8 rather than 12.4 so the same image also covers newer server GPUs
 # (Blackwell / sm_120); it runs the Ampere cards fine too.
@@ -33,14 +31,14 @@ COPY src ./src
 COPY main.py ./
 COPY scripts ./scripts
 
-# Weights live on a named volume, not in the image: ~3.5 GB of checkpoints
+# Weights live on a named volume, not in the image: ~2.2 GB of checkpoints
 # would otherwise be rebuilt into every layer push.
 VOLUME ["/models"]
 
 EXPOSE 8000
 
 # start-period is generous on purpose: with EAGER_LOAD_MODELS the first
-# boot downloads ~3.5 GB of weights into /models before the port answers.
+# boot downloads ~2.2 GB of weights into /models before the port answers.
 # Subsequent boots hit the cache and come up in well under a minute.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=900s --retries=3 \
   CMD python -c "import urllib.request;urllib.request.urlopen('http://localhost:8000/health').read()" || exit 1

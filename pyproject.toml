@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "ec-vectordb-service"
 version = "0.1.0"
-description = "Multi-model Bangla retrieval for the EC FAQ bot: three embedding models vote, RRF fuses."
+description = "Bangla FAQ top-k retrieval service: e5-instruct embeddings over Qdrant."
 readme = "README.md"
 requires-python = ">=3.11"
 
@@ -21,18 +21,19 @@ dependencies = [
     "qdrant-client==1.12.2",
     "sentence-transformers==3.3.1",
     "numpy==1.26.4",
+    "huggingface-hub==0.36.2",
 ]
 
 [project.optional-dependencies]
-# >=2.6 is a hard floor, not caution. BAAI/bge-m3 publishes only
-# `pytorch_model.bin` with no safetensors, and transformers refuses to
-# `torch.load` a pickle checkpoint on older torch because of CVE-2025-32434;
-# on 2.5.1 the service dies at startup. See "Known constraints" in the README.
+# >=2.6 is a hard floor: transformers refuses to `torch.load` any pickle
+# checkpoint on older torch because of CVE-2025-32434, so a model without
+# safetensors cannot load at all. See "Known constraints" in the README.
 torch = ["torch>=2.6"]
 dev = [
     "ec-vectordb-service[torch]",
     "pytest==8.3.4",
     "httpx==0.28.1",
+    "ruff==0.8.4",
 ]
 
 [tool.setuptools]
@@ -47,6 +48,9 @@ py-modules = ["main"]
 # discover `core`, `api` and friends as top-level names.
 where = ["."]
 include = ["src*"]
+
+[tool.ruff]
+line-length = 88
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

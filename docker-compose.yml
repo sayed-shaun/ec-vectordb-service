@@ -19,36 +19,20 @@ services:
     build: .
     container_name: ec-vectordb-api
     ports:
-      - "8000:8000"
+      - "${API_PORT:-8000}:8000"
     depends_on:
       qdrant:
         condition: service_healthy
     environment:
       QDRANT_URL: http://qdrant:6333
-      COLLECTION: ec_documents
       # CPU by default so the stack boots anywhere. Switch to GPU with the
       # overlay: docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
       DEVICE: ${DEVICE:-cpu}
-      DTYPE: ${DTYPE:-float32}
-      # Overridden per-card by the GPU overlays; .env never reaches
-      # the container, so per-model placement has to come through here.
-      DEVICE_OVERRIDES: ${DEVICE_OVERRIDES:-}
-      EMBED_BATCH_SIZE: 16
       EAGER_LOAD_MODELS: "true"
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
       LOG_FILE: /srv/logs/ec-vectordb.log
-      LOG_MAX_BYTES: 10485760
-      # Empty by default -- no environment-specific URL belongs in a
-      # committed file. Set from the shell or an untracked .env to enable.
-      REWRITE_URL: ${REWRITE_URL:-}
-      REWRITE_TIMEOUT_S: ${REWRITE_TIMEOUT_S:-3.0}
-      SESSION_TTL_S: ${SESSION_TTL_S:-1800}
-      SESSION_MAX_COUNT: ${SESSION_MAX_COUNT:-10000}
     volumes:
       - models:/models          # HF weight cache, survives rebuilds
-      - ./data:/srv/data:ro     # question_tag.csv + tag_answer.json
-      # Not baked into the image: edit the page and reload, no rebuild.
-      - ./static:/srv/static:ro
+      - ./data:/srv/data:ro     # question_tag.csv
       # Bind-mounted so the log outlives the container. It is capped at 10 MiB
       # by the handler, so this cannot grow unbounded on the host either.
       - ./logs:/srv/logs

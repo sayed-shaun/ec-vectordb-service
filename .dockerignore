@@ -8,4 +8,3 @@ tests/
 *.md
 .env
 logs/
-static/
