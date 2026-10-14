@@ -39,11 +39,14 @@ class FakeEmbedder:
         norm = sum(v * v for v in vec) ** 0.5 or 1.0
         return [v / norm for v in vec]
 
+    # The raw text only, not the model's instruction prefix: e5-instruct's
+    # ~50-token prefix is identical on both sides, and in a bag of tokens it
+    # would swamp the question and put every pair at cosine ~0.99.
     def embed_queries(self, texts):
-        return [self._vec(self.spec.encode_query(t)) for t in texts]
+        return [self._vec(t) for t in texts]
 
     def embed_passages(self, texts):
-        return [self._vec(self.spec.encode_passage(t)) for t in texts]
+        return [self._vec(t) for t in texts]
 
 
 @pytest.fixture

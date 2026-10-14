@@ -1,6 +1,9 @@
 import pytest
 
+from src.core.config import MODEL_SPECS
 from src.schemas import Document, QueryRequest
+
+MODEL_NAMES = [s.name for s in MODEL_SPECS]
 
 BANGLA_DOCS = [
     Document(
@@ -30,7 +33,7 @@ def seeded(service):
 def test_ingest_writes_one_point_per_document(service):
     count, models = service.ingest(BANGLA_DOCS)
     assert count == 3
-    assert models == ["e5", "qwen3", "bge_m3"]
+    assert models == MODEL_NAMES
     assert service.store.count() == 3
 
 
@@ -44,8 +47,8 @@ def test_query_returns_topk_with_per_model_votes(seeded):
     res = seeded.query(QueryRequest(question="ভোটার তালিকা হালনাগাদ", top_k=2))
     assert len(res.hits) == 2
     assert res.hits[0].doc_id == "d3"
-    assert res.hits[0].votes == 3
-    assert set(res.hits[0].per_model) == {"e5", "qwen3", "bge_m3"}
+    assert res.hits[0].votes == len(MODEL_NAMES)
+    assert set(res.hits[0].per_model) == set(MODEL_NAMES)
     assert res.hits[0].text.startswith("ভোটার")
     assert res.hits[0].metadata["source"] == "ec"
     assert res.took_ms >= 0
@@ -72,10 +75,11 @@ def test_filters_accept_a_list_of_values(seeded):
 
 
 def test_model_subset_uses_only_those_models(seeded):
-    res = seeded.query(QueryRequest(question="ঢাকা", top_k=3, models=["e5", "bge_m3"]))
-    assert res.models == ["e5", "bge_m3"]
-    assert all(set(h.per_model) <= {"e5", "bge_m3"} for h in res.hits)
-    assert all(h.votes <= 2 for h in res.hits)
+    subset = MODEL_NAMES[:1]
+    res = seeded.query(QueryRequest(question="ঢাকা", top_k=3, models=subset))
+    assert res.models == subset
+    assert all(set(h.per_model) <= set(subset) for h in res.hits)
+    assert all(h.votes <= len(subset) for h in res.hits)
 
 
 def test_unknown_model_is_rejected(seeded):

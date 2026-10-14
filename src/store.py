@@ -1,7 +1,7 @@
 """Qdrant persistence.
 
-One collection, one point per chunk, three named vectors per point -- one per
-voting model, so a chunk can never be missing under just one of them.
+One collection, one point per chunk, one named vector per configured model,
+so a chunk can never be missing under just one of them.
 """
 
 from __future__ import annotations
@@ -81,8 +81,8 @@ class VectorStore:
         limit: int,
         query_filter: models.Filter | None = None,
     ) -> dict[str, list[Candidate]]:
-        """Run all model searches in one round trip, so a third voting model
-        costs almost no extra latency over one."""
+        """Run all model searches in one round trip, so each extra model
+        costs almost no latency over one."""
         names = list(vectors_by_model)
         requests = [
             models.QueryRequest(

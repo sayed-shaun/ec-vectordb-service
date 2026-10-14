@@ -1,4 +1,4 @@
-"""Lazy-loaded embedding backends, one per voting model."""
+"""Lazy-loaded embedding backends, one per configured model."""
 
 from __future__ import annotations
 
@@ -90,36 +90,6 @@ class SentenceTransformerEmbedder:
     def embed_passages(self, texts: list[str]) -> list[Vector]:
         prepared = [self.spec.encode_passage(t) for t in texts]
         return self._encode(prepared)
-
-
-MIN_TORCH_FOR_PICKLE_CHECKPOINTS = (2, 6)
-
-PICKLE_ONLY_MODELS = {"BAAI/bge-m3"}
-
-
-def preflight() -> list[str]:
-    """Problems that would otherwise surface as a stack trace mid-load.
-
-    Warns rather than raises, so a deployment using only the safetensors
-    models still starts.
-    """
-    problems: list[str] = []
-    try:
-        import torch
-    except ImportError:
-        return ["torch is not installed"]
-
-    parts = torch.__version__.split("+")[0].split(".")
-    version = tuple(int(p) for p in parts[:2])
-    if version < MIN_TORCH_FOR_PICKLE_CHECKPOINTS:
-        affected = [s.hf_id for s in MODEL_SPECS if s.hf_id in PICKLE_ONLY_MODELS]
-        if affected:
-            problems.append(
-                f"torch {torch.__version__} < 2.6, so {', '.join(affected)} cannot load: "
-                "those repos ship only pytorch_model.bin and transformers blocks "
-                "torch.load below 2.6 (CVE-2025-32434). Upgrade the base image."
-            )
-    return problems
 
 
 class EmbedderRegistry:

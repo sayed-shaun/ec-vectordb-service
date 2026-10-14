@@ -1,7 +1,7 @@
 """Fusion of the per-model candidate lists.
 
-Ranks are fused rather than cosines because the three models score on
-incomparable scales.
+Ranks are fused rather than cosines because different models score on
+incomparable scales. With a single model RRF reduces to its own ranking.
 """
 
 from __future__ import annotations
