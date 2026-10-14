@@ -30,9 +30,13 @@ services:
       DEVICE: ${DEVICE:-cpu}
       EAGER_LOAD_MODELS: "true"
       LOG_FILE: /srv/logs/ec-vectordb.log
+      # /reindex downloads the corpus with this. Export it or keep it in an
+      # untracked .env -- never a literal here.
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      REINDEX_TOKEN: ${REINDEX_TOKEN:-}
     volumes:
       - models:/models          # HF weight cache, survives rebuilds
-      - ./data:/srv/data:ro     # question_tag.csv
+      - ./data:/srv/data        # question_tag.csv; /reindex rewrites it
       # Bind-mounted so the log outlives the container. It is capped at 10 MiB
       # by the handler, so this cannot grow unbounded on the host either.
       - ./logs:/srv/logs

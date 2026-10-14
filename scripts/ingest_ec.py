@@ -1,6 +1,6 @@
 """Index the EC FAQ corpus into Qdrant.
 
-    python scripts/ingest_ec.py [--limit N] [--batch 256] [--normalizer compat]
+    python scripts/ingest_ec.py [--limit N] [--batch N] [--normalizer compat]
 
 Embeds ~18k canonical questions with every configured model. Only the question text
 is embedded; the tag and the original surface form ride along in the payload
@@ -16,11 +16,10 @@ import time
 
 sys.path.insert(0, ".")
 
-from src.schemas import Document  # noqa: E402
-from src.core.config import MODEL_SPECS  # noqa: E402
+from src.core.config import MODEL_SPECS, settings  # noqa: E402
 from src.core.logger import setup_logging  # noqa: E402
 from src.ec import load_questions  # noqa: E402
-from src.normalize import normalize  # noqa: E402
+from src.indexer import index_questions  # noqa: E402
 from src.service import RetrievalService  # noqa: E402
 from src.store import VectorStore  # noqa: E402
 
@@ -31,8 +30,8 @@ log = logging.getLogger("ingest")
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--limit", type=int, default=0, help="index only the first N rows")
-    ap.add_argument("--batch", type=int, default=256, help="rows per upsert")
-    ap.add_argument("--normalizer", default="compat", choices=["compat", "safe", "none"])
+    ap.add_argument("--batch", type=int, default=settings.index_batch_size, help="rows per upsert")
+    ap.add_argument("--normalizer", default=settings.index_normalizer, choices=["compat", "safe", "none"])
     ap.add_argument("--recreate", action="store_true", help="drop the collection first")
     ap.add_argument(
         "--resume", action="store_true",
@@ -68,31 +67,8 @@ def main() -> None:
         log.info("nothing to do; collection holds %d points", store.count())
         return
 
-    total, started = 0, time.perf_counter()
-    for i in range(0, len(questions), args.batch):
-        chunk = questions[i : i + args.batch]
-        docs = [
-            Document(
-                doc_id=q.qid,
-                text=normalize(q.question, args.normalizer),
-                metadata={
-                    "tag": q.tag,
-                    "raw_question": q.question,
-                    "source": "question_tag.csv",
-                    "lang": "bn",
-                },
-            )
-            for q in chunk
-        ]
-        count, _ = service.ingest(docs)
-        total += count
-        elapsed = time.perf_counter() - started
-        rate = total / elapsed if elapsed else 0
-        remaining = (len(questions) - total) / rate if rate else 0
-        log.info(
-            "%d/%d  %.1f rows/s  eta %.1f min",
-            total, len(questions), rate, remaining / 60,
-        )
+    started = time.perf_counter()
+    index_questions(service, questions, args.normalizer, args.batch)
 
     log.info("done: %d points in %.1f min", store.count(), (time.perf_counter() - started) / 60)
 

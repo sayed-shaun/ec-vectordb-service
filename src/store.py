@@ -117,6 +117,36 @@ class VectorStore:
             wait=True,
         )
 
+    def prune(self, keep_doc_ids: set[str]) -> int:
+        """Delete every point whose doc_id is not in ``keep_doc_ids``.
+
+        A reindex upserts in place, so queries keep working throughout; this
+        runs last to drop points a shrunk or reshuffled corpus no longer has.
+        """
+        keep = {stable_point_id(d) for d in keep_doc_ids}
+        stale: list = []
+        offset = None
+        while True:
+            records, offset = self.client.scroll(
+                collection_name=self.collection,
+                limit=settings.index_batch_size,
+                offset=offset,
+                with_payload=False,
+                with_vectors=False,
+            )
+            stale.extend(r.id for r in records if str(r.id) not in keep)
+            if offset is None:
+                break
+        for i in range(0, len(stale), settings.index_batch_size):
+            self.client.delete(
+                collection_name=self.collection,
+                points_selector=models.PointIdsList(
+                    points=stale[i : i + settings.index_batch_size]
+                ),
+                wait=True,
+            )
+        return len(stale)
+
     def existing_doc_ids(self, doc_ids: list[str]) -> set[str]:
         """Which of these doc_ids are already indexed, so a long ingest can
         resume instead of restarting."""

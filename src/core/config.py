@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -143,6 +144,23 @@ class Settings(BaseSettings):
     rrf_k: int = 60
 
     embed_batch_size: int = 16
+
+    # POST /reindex pulls the corpus from this private GitHub repo, then
+    # re-embeds it. The token is the same GITHUB_TOKEN scripts/fetch_dataset.sh
+    # reads; scope required: repo (read).
+    github_token: str | None = None
+    dataset_repo: str = "Synesis-IT-PLC/ec-faq-bot"
+    dataset_ref: str = "development"
+    dataset_path: str = "full_dataset/question_tag.csv"
+    dataset_timeout_s: float = 60.0
+    # Rows per upsert, and per page when pruning stale points.
+    index_batch_size: int = 256
+    # Must match the normaliser queries use, or the index and the questions
+    # sit in different spaces.
+    index_normalizer: Literal["compat", "safe", "none"] = "compat"
+    # The service has no authentication, and /reindex is a heavy write. When
+    # set, callers must send it as X-Reindex-Token; unset leaves it open.
+    reindex_token: str | None = None
 
     eager_load_models: bool = False
     model_cache_dir: str | None = None
