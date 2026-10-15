@@ -139,3 +139,15 @@ def test_answer_store_loads_the_tag_to_answer_map(tmp_path):
 def test_a_missing_answer_file_loads_empty(tmp_path):
     store = AnswerStore.load(tmp_path / "absent.json")
     assert len(store) == 0 and store.get("a") is None
+
+
+def test_excluded_tags_are_not_loaded(tmp_path, monkeypatch):
+    from src.core.config import settings
+
+    path = tmp_path / "q.csv"
+    path.write_text("question,tag\nq one,keep\nq two,drop\nq three,keep\n", encoding="utf-8")
+    monkeypatch.setattr(settings, "EXCLUDED_TAGS", ["drop"])
+    rows = load_questions(path)
+    assert [r.tag for r in rows] == ["keep", "keep"]
+    monkeypatch.setattr(settings, "EXCLUDED_TAGS", [])
+    assert len(load_questions(path)) == 3

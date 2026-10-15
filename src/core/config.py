@@ -148,6 +148,10 @@ class Settings(BaseSettings):
     DATASET_TIMEOUT_S: float = 60.0
     # Rows per upsert, and per page when pruning stale points.
     INDEX_BATCH_SIZE: int = 256
+    # Tags whose rows are never indexed. "fraction" holds context-free sentence
+    # fragments ("করা যায় কি?") that match any query without meaning anything.
+    # Env form is a JSON list, e.g. EXCLUDED_TAGS='["fraction","x"]'.
+    EXCLUDED_TAGS: list[str] = ["fraction"]
     # Must match the normaliser queries use, or the index and the questions
     # sit in different spaces.
     INDEX_NORMALIZER: Literal["compat", "safe", "none"] = "compat"

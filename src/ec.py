@@ -13,6 +13,8 @@ import logging
 from dataclasses import dataclass
 from pathlib import Path
 
+from src.core.config import settings
+
 log = logging.getLogger(__name__)
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
@@ -61,7 +63,11 @@ def load_questions(path: Path | str = QUESTION_TAG_CSV) -> list[QuestionRow]:
 
     UTF-8 with a BOM, hence ``utf-8-sig``: plain ``utf-8`` glues a zero-width
     no-break space to the first header and loses the ``question`` column.
+
+    Rows whose tag is in ``settings.EXCLUDED_TAGS`` are dropped here so every
+    caller (ingest script, /reindex and its pruning) sees the same corpus.
     """
+    excluded = set(settings.EXCLUDED_TAGS)
     rows: list[QuestionRow] = []
     with open(path, encoding="utf-8-sig", newline="") as fh:
         for i, row in enumerate(csv.DictReader(fh)):
@@ -69,6 +75,8 @@ def load_questions(path: Path | str = QUESTION_TAG_CSV) -> list[QuestionRow]:
             tag = (row.get("tag") or "").strip()
             if not question or not tag:
                 log.warning("skipping row %d: missing question or tag", i)
+                continue
+            if tag in excluded:
                 continue
             rows.append(QuestionRow(qid=f"q{i:06d}", question=question, tag=tag))
     return rows
